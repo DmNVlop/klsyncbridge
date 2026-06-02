@@ -98,6 +98,70 @@
       </button>
     </div>
 
+    <!-- Actualización de la aplicación -->
+    <div class="bg-surface rounded-xl border border-white/5 p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="font-medium text-white">Actualización</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Versión actual: <span id="current-version" class="font-mono text-slate-300">—</span></p>
+        </div>
+        <button onclick="checkUpdate()" id="btn-check-update" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white text-xs transition-colors">
+          Buscar actualización
+        </button>
+      </div>
+
+      <!-- Estado idle -->
+      <div id="update-idle" class="text-xs text-slate-500">
+        Haz clic en "Buscar actualización" para consultar si hay una versión nueva disponible.
+      </div>
+
+      <!-- Buscando -->
+      <div id="update-checking" class="hidden flex items-center gap-2 text-sm text-slate-400">
+        <div class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></div>
+        Consultando servidor...
+      </div>
+
+      <!-- Sin updates -->
+      <div id="update-ok" class="hidden flex items-center gap-2 text-sm text-emerald-400">
+        <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+        <span id="update-ok-text">Estás en la última versión.</span>
+      </div>
+
+      <!-- Update disponible -->
+      <div id="update-available" class="hidden">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+          <span class="text-sm text-amber-400 font-medium">Nueva versión disponible: <span id="latest-version" class="font-mono"></span></span>
+          <span id="release-date" class="text-xs text-slate-500"></span>
+        </div>
+        <pre id="changelog-text" class="text-xs text-slate-400 font-mono bg-base rounded-lg p-3 border border-white/5 whitespace-pre-wrap mb-4 leading-relaxed"></pre>
+        <button onclick="runUpdate()" id="btn-run-update" class="px-4 py-2 bg-emerald-800 hover:bg-emerald-700 border border-emerald-500/30 text-emerald-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          Actualizar ahora
+        </button>
+        <p class="text-xs text-slate-500 mt-2">
+          La app se reiniciará automáticamente. La página se recargará cuando el servicio vuelva a estar disponible.
+        </p>
+      </div>
+
+      <!-- Update en progreso -->
+      <div id="update-progress" class="hidden">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+          <span class="text-sm text-blue-400 font-medium">Actualizando...</span>
+        </div>
+        <pre id="update-log" class="text-xs font-mono text-slate-300 bg-base rounded-lg p-4 border border-white/5 max-h-56 overflow-y-auto whitespace-pre-wrap leading-relaxed"></pre>
+      </div>
+
+      <!-- Reiniciando -->
+      <div id="update-restarting" class="hidden">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+          <span class="text-sm text-emerald-400 font-medium">Reiniciando servicio...</span>
+        </div>
+        <p class="text-xs text-slate-500">La página se recargará automáticamente en cuanto el servidor responda.</p>
+      </div>
+    </div>
+
     <div id="log-section" class="hidden bg-surface rounded-xl border border-white/5 p-6">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-medium text-white text-sm">Salida del proceso</h2>
@@ -196,6 +260,117 @@
       setup:              { title: 'Ejecutar setup',          body: 'Se generarán los componentes faltantes (clave de cifrado, base de datos, JWT). Los datos existentes no se modifican.', okLabel: 'Ejecutar',    okClass: 'bg-amber-700 hover:bg-amber-600 text-white' },
       'create-shortcuts': { title: 'Recrear acceso directo', body: 'Se creará un acceso directo en el Escritorio y en el Menú Inicio apuntando a http://localhost:3847.',            okLabel: 'Crear',       okClass: 'bg-slate-600 hover:bg-slate-500 text-white', noDisable: true },
     };
+
+    // ── Update ────────────────────────────────────────────────────────────────
+
+    function showUpdateState(state) {
+      ['update-idle','update-checking','update-ok','update-available','update-progress','update-restarting']
+        .forEach(id => document.getElementById(id).classList.add('hidden'));
+      document.getElementById('update-' + state).classList.remove('hidden');
+    }
+
+    async function checkUpdate() {
+      showUpdateState('checking');
+      document.getElementById('btn-check-update').disabled = true;
+      try {
+        const res = await API.get('/system/check-update');
+        const d = res.data;
+        document.getElementById('current-version').textContent = d.current;
+        if (!d.hasUpdate) {
+          document.getElementById('update-ok-text').textContent = `Estás en la última versión (v${d.current}).`;
+          showUpdateState('ok');
+        } else {
+          document.getElementById('latest-version').textContent = `v${d.latest}`;
+          document.getElementById('release-date').textContent = d.release_date ? `(${d.release_date})` : '';
+          document.getElementById('changelog-text').textContent = d.changelog || '';
+          showUpdateState('available');
+        }
+      } catch (e) {
+        showUpdateState('idle');
+        UI.toast('No se pudo verificar: ' + e.message, 'error');
+      } finally {
+        document.getElementById('btn-check-update').disabled = false;
+      }
+    }
+
+    async function runUpdate() {
+      const ok = await UI.confirmDialog(
+        'Actualizar KLSyncBridge',
+        'Se descargarán los archivos nuevos, se aplicarán las migraciones y el servicio se reiniciará. Los datos no se modifican. ¿Continuar?',
+        'Actualizar', 'bg-emerald-700 hover:bg-emerald-600 text-white'
+      );
+      if (!ok) return;
+
+      showUpdateState('progress');
+      document.getElementById('btn-check-update').disabled = true;
+      document.getElementById('btn-run-update').disabled = true;
+
+      const updateLog = document.getElementById('update-log');
+      updateLog.textContent = '';
+
+      const token = AUTH.getToken();
+      let finished = false;
+
+      try {
+        const response = await fetch('/api/system/update', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          updateLog.textContent += chunk;
+          updateLog.scrollTop = updateLog.scrollHeight;
+          if (chunk.includes('Actualizaci') && chunk.includes('completada')) finished = true;
+        }
+      } catch (e) {
+        updateLog.textContent += '\n❌ Error de conexión: ' + e.message;
+      }
+
+      if (finished) {
+        showUpdateState('restarting');
+        waitForRestart();
+      } else {
+        document.getElementById('btn-check-update').disabled = false;
+        document.getElementById('btn-run-update').disabled = false;
+      }
+    }
+
+    function waitForRestart() {
+      let attempts = 0;
+      const maxAttempts = 40; // ~40 segundos
+      const interval = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await fetch('/api/system/check-update', {
+            headers: { 'Authorization': 'Bearer ' + AUTH.getToken() },
+          });
+          if (res.ok) {
+            clearInterval(interval);
+            window.location.reload();
+          }
+        } catch {
+          // servidor aún reiniciando — ignorar
+        }
+        if (attempts >= maxAttempts) {
+          clearInterval(interval);
+          showUpdateState('idle');
+          UI.toast('El servidor tardó demasiado en reiniciar. Recarga manualmente.', 'warning');
+        }
+      }, 1000);
+    }
+
+    // Cargar versión actual al abrir la página
+    API.get('/system/check-update').then(r => {
+      document.getElementById('current-version').textContent = r.data.current;
+    }).catch(() => {});
+
+    // ── Acciones de servicio ──────────────────────────────────────────────────
 
     async function runAction(action) {
       const cfg = ACTION_CONFIG[action];

@@ -3,11 +3,13 @@
 const express = require('express');
 const { execFile, spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const { requireAuth } = require('../auth/auth.middleware');
 const { success, fromError } = require('../../utils/response');
 const { ForbiddenError, AppError } = require('../../utils/errors');
 const { getDb } = require('../../config/database');
 const logger = require('../../services/logger.service');
+const axios = require('axios');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -179,6 +181,163 @@ router.post('/create-shortcuts', (req, res) => {
   const output = results.join('\n') + '\n';
   logger.info('System: accesos directos recreados', { user: req.user.username });
   return success(res, { output });
+});
+
+// ── Update system ─────────────────────────────────────────────────────────────
+
+const GITHUB_USER    = 'dmnvl';
+const GITHUB_REPO    = 'klsyncbridge';
+const MANIFEST_URL   = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/version.json`;
+const RELEASES_URL   = `https://github.com/${GITHUB_USER}/${GITHUB_REPO}/archive/refs/heads/main.zip`;
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function localVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    return pkg.version || '0.0.0';
+  } catch { return '0.0.0'; }
+}
+
+// GET /api/system/check-update
+router.get('/check-update', async (req, res) => {
+  try {
+    const current = localVersion();
+    const { data: manifest } = await axios.get(MANIFEST_URL, { timeout: 8000 });
+    const latest = manifest.version;
+    const hasUpdate = compareVersions(latest, current) > 0;
+    return success(res, { current, latest, hasUpdate, changelog: manifest.changelog || '', release_date: manifest.release_date || '' });
+  } catch (err) {
+    logger.warn('System: check-update falló', { error: err.message });
+    return fromError(res, new AppError('No se pudo consultar el servidor de actualizaciones: ' + err.message, 'UPDATE_CHECK_FAILED', 502));
+  }
+});
+
+// POST /api/system/update
+// Descarga main.zip de GitHub, extrae sobre ROOT preservando data/ y logs/, corre npm install + setup, reinicia
+router.post('/update', async (req, res) => {
+  // Responde inmediatamente con SSE-like: headers flushed, luego el cliente hace polling de /check-update
+  // En realidad usamos streaming de texto plano via res.write
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  function log(msg) {
+    const line = msg + '\n';
+    res.write(line);
+    logger.info('System update: ' + msg);
+  }
+
+  try {
+    const current = localVersion();
+    log(`▶ Iniciando actualización desde v${current}`);
+    log(`▶ Descargando desde ${RELEASES_URL} ...`);
+
+    // Descargar ZIP
+    const tmpDir  = path.join(ROOT, 'temp');
+    const zipPath = path.join(tmpDir, 'update.zip');
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const writer = fs.createWriteStream(zipPath);
+    const response = await axios.get(RELEASES_URL, { responseType: 'stream', timeout: 60000 });
+    await new Promise((resolve, reject) => {
+      response.data.pipe(writer);
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+    log('✅ ZIP descargado');
+
+    // Extraer con PowerShell (disponible en Windows 10+)
+    log('▶ Extrayendo archivos...');
+    const extractDir = path.join(tmpDir, 'extracted');
+    if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
+
+    await new Promise((resolve, reject) => {
+      const ps = spawn('powershell', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force`,
+      ], { cwd: ROOT });
+      ps.on('close', code => code === 0 ? resolve() : reject(new Error(`PowerShell exit ${code}`)));
+      ps.on('error', reject);
+    });
+    log('✅ ZIP extraído');
+
+    // El ZIP de GitHub genera una carpeta raíz "repo-main/"
+    const entries = fs.readdirSync(extractDir);
+    const innerDir = entries.length === 1 ? path.join(extractDir, entries[0]) : extractDir;
+
+    // Copiar src/, public/, scripts/, package.json, *.json, *.bat, *.ps1
+    // PRESERVAR: data/, logs/, node_modules/, .env
+    const COPY_DIRS  = ['src', 'public', 'scripts', 'docs'];
+    const COPY_FILES = ['package.json', 'package-lock.json', 'version.json', '.env.example', '.gitignore', '.gitattributes'];
+
+    for (const dir of COPY_DIRS) {
+      const src = path.join(innerDir, dir);
+      const dst = path.join(ROOT, dir);
+      if (!fs.existsSync(src)) continue;
+      if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true });
+      fs.cpSync(src, dst, { recursive: true });
+      log(`✅ Copiado ${dir}/`);
+    }
+    for (const file of COPY_FILES) {
+      const src = path.join(innerDir, file);
+      const dst = path.join(ROOT, file);
+      if (!fs.existsSync(src)) continue;
+      fs.copyFileSync(src, dst);
+    }
+    log('✅ Archivos actualizados');
+
+    // Limpiar temp
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+
+    // npm install
+    log('▶ Instalando dependencias (npm install)...');
+    await new Promise((resolve, reject) => {
+      const npm = spawn('npm', ['install', '--omit=dev'], { cwd: ROOT, shell: true });
+      npm.stdout.on('data', d => res.write(d.toString()));
+      npm.stderr.on('data', d => res.write(d.toString()));
+      npm.on('close', code => code === 0 ? resolve() : reject(new Error(`npm exit ${code}`)));
+      npm.on('error', reject);
+    });
+    log('✅ Dependencias instaladas');
+
+    // Migraciones DB
+    log('▶ Aplicando migraciones de base de datos...');
+    await runScript('setup.js');
+    log('✅ Migraciones aplicadas');
+
+    const newVersion = localVersion();
+    log(`\n✅ Actualización completada — v${newVersion}`);
+    log('▶ Reiniciando servicio...');
+    res.end();
+
+    // Reiniciar después de responder: si es Windows Service usa sc, si no process.exit
+    setTimeout(async () => {
+      try {
+        await new Promise((resolve) => {
+          execFile('sc', ['stop', 'klsyncbridge.exe'], { timeout: 10000 }, () => resolve());
+        });
+        await new Promise(r => setTimeout(r, 3000));
+        execFile('sc', ['start', 'klsyncbridge.exe'], { timeout: 10000 }, () => {});
+      } catch {
+        // No es Windows Service — salir y dejar que pm2/forever/nodemon reinicie
+        process.exit(0);
+      }
+    }, 500);
+
+  } catch (err) {
+    logger.error('System update: error', { error: err.message });
+    res.write(`\n❌ Error durante la actualización: ${err.message}\n`);
+    res.end();
+  }
 });
 
 module.exports = router;
