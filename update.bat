@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 title KLSyncBridge — Actualización manual
 
-set GITHUB_USER=dmnvl
+set GITHUB_USER=DmNVlop
 set GITHUB_REPO=klsyncbridge
 set ZIP_URL=https://github.com/%GITHUB_USER%/%GITHUB_REPO%/archive/refs/heads/main.zip
 set TMP_DIR=%~dp0temp_update

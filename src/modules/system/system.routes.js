@@ -185,7 +185,7 @@ router.post('/create-shortcuts', (req, res) => {
 
 // ── Update system ─────────────────────────────────────────────────────────────
 
-const GITHUB_USER    = 'dmnvl';
+const GITHUB_USER    = 'DmNVlop';
 const GITHUB_REPO    = 'klsyncbridge';
 const MANIFEST_URL   = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/version.json`;
 const RELEASES_URL   = `https://github.com/${GITHUB_USER}/${GITHUB_REPO}/archive/refs/heads/main.zip`;
