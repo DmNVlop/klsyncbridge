@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Jobs</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}</style>
+</head>
+<body>
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold text-white">Jobs de sincronización</h1>
+      <a href="/job-editor.html" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+        + Nuevo job
+      </a>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-white/5 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-white/5">
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Nombre</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Tipo ítem</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Op. modo</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Sync</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Schedule</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Estado</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Último resultado</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Última ejecución</th>
+            <th class="text-right px-6 py-3 text-slate-400 font-medium">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="jobs-tbody">
+          <tr><td colspan="9" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    async function load() {
+      try {
+        const res = await API.get('/jobs');
+        const jobs = res.data || [];
+        const tbody = document.getElementById('jobs-tbody');
+
+        if (jobs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-8 text-center text-slate-500">No hay jobs. <a href="/job-editor.html" class="text-accent">Crea uno →</a></td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = jobs.map(j => `
+          <tr class="border-b border-white/5 hover:bg-white/2">
+            <td class="px-6 py-3">
+              <div class="font-medium text-white">${j.name}</div>
+              ${j.description ? `<div class="text-slate-500 text-xs">${j.description}</div>` : ''}
+            </td>
+            <td class="px-6 py-3 text-slate-400 font-mono text-xs">${j.item_type || '—'}</td>
+            <td class="px-6 py-3 text-slate-400 font-mono text-xs">${j.op_mode || '—'}</td>
+            <td class="px-6 py-3 text-slate-400 font-mono text-xs">${j.sync_mode}</td>
+            <td class="px-6 py-3 text-slate-400 font-mono text-xs">${j.schedule_type==='interval'?`cada ${j.schedule_value}m`:j.schedule_value}</td>
+            <td class="px-6 py-3">
+              <span class="px-2 py-0.5 rounded text-xs font-medium ${j.is_active?'bg-accent/20 text-accent':'bg-white/5 text-slate-400'}">
+                ${j.is_active?'Activo':'Inactivo'}
+              </span>
+            </td>
+            <td class="px-6 py-3">${UI.statusBadge(j.last_run_status)}</td>
+            <td class="px-6 py-3 text-slate-400 font-mono text-xs">${UI.formatDate(j.last_run_at)}</td>
+            <td class="px-6 py-3">
+              <div class="flex items-center justify-end gap-1">
+                <button onclick="runNow('${j.id}','${j.name.replace(/'/g,"\\'")}');" class="px-2 py-1 rounded bg-white/5 hover:bg-accent/20 hover:text-accent text-slate-400 text-xs transition-colors">▶</button>
+                ${j.is_active
+                  ? `<button onclick="deactivate('${j.id}');" class="px-2 py-1 rounded bg-white/5 hover:bg-amber-900/20 hover:text-amber-400 text-slate-400 text-xs">Detener</button>`
+                  : `<button onclick="activate('${j.id}');" class="px-2 py-1 rounded bg-white/5 hover:bg-emerald-900/20 hover:text-emerald-400 text-slate-400 text-xs">Activar</button>`
+                }
+                <button onclick="resetSnapshot('${j.id}','${j.name.replace(/'/g,"\\'")}');" class="px-2 py-1 rounded bg-white/5 hover:bg-purple-900/20 hover:text-purple-400 text-slate-400 text-xs" title="Borrar snapshot local — fuerza resync completo en próxima ejecución">↺ Snap</button>
+                <a href="/job-editor.html?id=${j.id}" class="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-slate-400 text-xs">Editar</a>
+                <button onclick="del('${j.id}','${j.name.replace(/'/g,"\\'")}');" class="px-2 py-1 rounded bg-white/5 hover:bg-red-900/20 hover:text-red-400 text-slate-400 text-xs">Eliminar</button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) { console.error(err); }
+    }
+
+    async function runNow(id, name) {
+      const ok = await UI.confirmDialog(`Ejecutar "${name}"`, '¿Ejecutar este job ahora?', 'Ejecutar');
+      if (!ok) return;
+      try {
+        await API.post(`/jobs/${id}/run-now`);
+        UI.toast('Job ejecutado');
+        load();
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    async function activate(id) {
+      try { await API.post(`/jobs/${id}/activate`); load(); }
+      catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    async function deactivate(id) {
+      try { await API.post(`/jobs/${id}/deactivate`); load(); }
+      catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    async function resetSnapshot(id, name) {
+      const ok = await UI.confirmDialog(
+        `Resetear snapshot — "${name}"`,
+        'Se borrará el snapshot local. La próxima ejecución procesará todos los registros como si fuera la primera vez.',
+        'Resetear', 'bg-purple-700 hover:bg-purple-600 text-white'
+      );
+      if (!ok) return;
+      try {
+        const res = await API.post(`/jobs/${id}/reset-snapshot`);
+        UI.toast(`Snapshot reseteado (${res.data.deleted} registros eliminados)`, 'info');
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    async function del(id, name) {
+      const ok = await UI.confirmDialog(`Eliminar job`, `¿Eliminar "${name}"? Esta acción no se puede deshacer.`, 'Eliminar', 'bg-red-700 hover:bg-red-600 text-white');
+      if (!ok) return;
+      try { await API.delete(`/jobs/${id}`); UI.toast('Job eliminado'); load(); }
+      catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

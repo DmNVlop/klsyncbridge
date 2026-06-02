@@ -1,0 +1,12 @@
+# Normaliza line endings: LF en repo, CRLF en checkout Windows
+* text=auto eol=crlf
+
+# Fuerza LF para scripts bash/shell
+*.sh text eol=lf
+
+# Binarios — no tocar
+*.exe binary
+*.msi binary
+*.ico binary
+*.png binary
+*.zip binary

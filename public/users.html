@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Usuarios</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}</style>
+</head>
+<body>
+  <main class="max-w-4xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold text-white">Gestión de usuarios</h1>
+      <button onclick="openCreate()" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">+ Nuevo usuario</button>
+    </div>
+
+    <div id="users-list" class="space-y-3">
+      <p class="text-slate-400">Cargando...</p>
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+    <div class="bg-surface rounded-2xl w-full max-w-md border border-white/10 shadow-2xl">
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <h2 id="modal-title" class="font-medium text-white">Nuevo usuario</h2>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+      </div>
+      <form id="user-form" class="px-6 py-5 space-y-4">
+        <input type="hidden" id="u-id">
+        <div id="form-error" class="hidden px-3 py-2 rounded-lg bg-red-900/30 border border-red-500/30 text-red-400 text-sm"></div>
+        <div id="username-field">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Usuario</label>
+          <input id="u-username" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="operario01">
+          <p class="text-xs text-slate-500 mt-1">Solo letras, números, guiones y puntos. Mínimo 3 caracteres.</p>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Contraseña</label>
+          <input id="u-password" type="password" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="Mínimo 8 caracteres">
+        </div>
+        <div class="flex items-center justify-end gap-3 pt-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 text-sm">Cancelar</button>
+          <button type="submit" id="form-submit" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    let users = [], editingId = null, masterMode = false;
+    const currentUserId = AUTH.getUser()?.id;
+
+    async function load() {
+      try {
+        const res = await API.get('/users');
+        users = res.data || [];
+        render();
+      } catch (err) { console.error(err); }
+    }
+
+    function render() {
+      const el = document.getElementById('users-list');
+      el.innerHTML = users.map(u => `
+        <div class="bg-surface rounded-xl border border-white/5 p-5 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center text-accent font-semibold">
+              ${u.username[0].toUpperCase()}
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white font-mono">${u.username}</span>
+                ${u.is_master ? '<span class="px-1.5 py-0.5 bg-amber-900/30 text-amber-400 text-xs rounded">Master</span>' : ''}
+                ${!u.is_active ? '<span class="px-1.5 py-0.5 bg-white/5 text-slate-500 text-xs rounded">Inactivo</span>' : ''}
+              </div>
+              <div class="text-slate-500 text-xs">Creado: ${new Date(u.created_at).toLocaleDateString('es-AR')}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            ${u.is_master
+              ? (currentUserId === u.id
+                  ? `<button onclick="openMasterPassword('${u.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">Cambiar contraseña</button>`
+                  : '<span class="text-slate-600 text-xs">Cuenta protegida</span>')
+              : `
+                <button onclick="toggleActive('${u.id}',${u.is_active})" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">
+                  ${u.is_active ? 'Desactivar' : 'Activar'}
+                </button>
+                <button onclick="openEdit('${u.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">Editar</button>
+                <button onclick="del('${u.id}','${u.username.replace(/'/g,"\\'")}');" class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/20 text-xs">Eliminar</button>
+              `
+            }
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function openCreate() {
+      editingId = null; masterMode = false;
+      document.getElementById('modal-title').textContent = 'Nuevo usuario';
+      document.getElementById('u-id').value = '';
+      document.getElementById('u-username').value = '';
+      document.getElementById('u-password').value = '';
+      document.getElementById('u-password').required = true;
+      document.getElementById('username-field').classList.remove('hidden');
+      document.getElementById('u-username').required = true;
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function openEdit(id) {
+      const u = users.find(u => u.id === id);
+      if (!u) return;
+      editingId = id; masterMode = false;
+      document.getElementById('modal-title').textContent = 'Editar usuario';
+      document.getElementById('u-id').value = id;
+      document.getElementById('u-username').value = u.username;
+      document.getElementById('u-password').value = '';
+      document.getElementById('u-password').required = false;
+      document.getElementById('username-field').classList.remove('hidden');
+      document.getElementById('u-username').required = true;
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function openMasterPassword(id) {
+      editingId = id; masterMode = true;
+      document.getElementById('modal-title').textContent = 'Cambiar contraseña (admin)';
+      document.getElementById('u-id').value = id;
+      document.getElementById('u-password').value = '';
+      document.getElementById('u-password').required = true;
+      document.getElementById('username-field').classList.add('hidden');
+      document.getElementById('u-username').required = false;
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.add('hidden');
+      document.getElementById('form-error').classList.add('hidden');
+      document.getElementById('username-field').classList.remove('hidden');
+      document.getElementById('u-username').required = true;
+      editingId = null; masterMode = false;
+    }
+
+    function showFormError(msg, details) {
+      const el = document.getElementById('form-error');
+      let html = msg;
+      if (details && typeof details === 'object') {
+        const items = Object.entries(details).map(([field, msgs]) =>
+          `<li><b>${field}:</b> ${Array.isArray(msgs) ? msgs.join(', ') : msgs}</li>`
+        ).join('');
+        if (items) html += `<ul class="mt-1 list-disc list-inside text-xs">${items}</ul>`;
+      }
+      el.innerHTML = html;
+      el.classList.remove('hidden');
+    }
+
+    document.getElementById('user-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      document.getElementById('form-error').classList.add('hidden');
+      const username = document.getElementById('u-username').value.trim();
+      const password = document.getElementById('u-password').value;
+      const btn = document.getElementById('form-submit');
+      btn.disabled = true; btn.textContent = 'Guardando...';
+      try {
+        if (masterMode) {
+          await API.put(`/users/${editingId}`, { password });
+        } else if (editingId) {
+          const body = { username };
+          if (password) body.password = password;
+          await API.put(`/users/${editingId}`, body);
+        } else {
+          await API.post('/users', { username, password });
+        }
+        closeModal();
+        UI.toast('Usuario guardado');
+        load();
+      } catch (err) {
+        showFormError(err.message || 'Error al guardar el usuario', err.details);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Guardar';
+      }
+    });
+
+    async function toggleActive(id, current) {
+      try {
+        await API.put(`/users/${id}`, { is_active: !current });
+        load();
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    async function del(id, name) {
+      const ok = await UI.confirmDialog('Eliminar usuario', `¿Eliminar "${name}"? Esta acción no se puede deshacer.`, 'Eliminar', 'bg-red-700 hover:bg-red-600 text-white');
+      if (!ok) return;
+      try { await API.delete(`/users/${id}`); UI.toast('Usuario eliminado'); load(); }
+      catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

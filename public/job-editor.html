@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Editor de Job</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>
+    body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}
+    .inp{width:100%;padding:0.5rem 0.75rem;border-radius:0.5rem;background:#0f1117;border:1px solid rgba(255,255,255,0.1);color:white;font-size:0.875rem;outline:none}
+    .inp:focus{border-color:#3b82f6}
+    .inp option{background:#1a1d27}
+    .step-inactive{opacity:0.4}
+  </style>
+</head>
+<body>
+  <nav class="border-b border-white/5 bg-surface px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <a href="/jobs" class="text-slate-400 hover:text-white text-sm">← Volver a Jobs</a>
+      <span class="text-white/20">|</span>
+      <span id="page-title" class="font-medium text-white">Nuevo Job</span>
+    </div>
+    <button onclick="AUTH.logout()" class="text-sm text-slate-400 hover:text-white">Cerrar sesión</button>
+  </nav>
+
+  <main class="max-w-3xl mx-auto px-6 py-8">
+    <!-- Steps indicator -->
+    <div class="flex items-center gap-2 mb-8">
+      <div id="s1" class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-full bg-accent text-white text-xs flex items-center justify-center font-semibold">1</div>
+        <span class="text-sm text-white">Fuente de datos</span>
+      </div>
+      <div class="flex-1 h-px bg-white/10 mx-2"></div>
+      <div id="s2" class="flex items-center gap-2 step-inactive">
+        <div class="w-7 h-7 rounded-full bg-white/10 text-slate-400 text-xs flex items-center justify-center font-semibold">2</div>
+        <span class="text-sm text-slate-400">API destino</span>
+      </div>
+      <div class="flex-1 h-px bg-white/10 mx-2"></div>
+      <div id="s3" class="flex items-center gap-2 step-inactive">
+        <div class="w-7 h-7 rounded-full bg-white/10 text-slate-400 text-xs flex items-center justify-center font-semibold">3</div>
+        <span class="text-sm text-slate-400">Mapeo de campos</span>
+      </div>
+      <div class="flex-1 h-px bg-white/10 mx-2"></div>
+      <div id="s4" class="flex items-center gap-2 step-inactive">
+        <div class="w-7 h-7 rounded-full bg-white/10 text-slate-400 text-xs flex items-center justify-center font-semibold">4</div>
+        <span class="text-sm text-slate-400">Schedule</span>
+      </div>
+    </div>
+
+    <!-- Step 1 -->
+    <div id="step-1" class="bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-5">Paso 1: Fuente de datos</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Nombre del job</label>
+          <input id="j-name" type="text" class="inp" placeholder="Sync Materiales">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Descripción (opcional)</label>
+          <input id="j-desc" type="text" class="inp" placeholder="Sincroniza tabla de materiales con ERP">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Conexión SQL Server</label>
+          <select id="j-conn" onchange="loadTables()" class="inp">
+            <option value="">Seleccionar conexión...</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Tabla o Vista</label>
+          <div class="flex gap-2">
+            <select id="j-table" onchange="loadFields()" class="inp flex-1">
+              <option value="">Seleccionar tabla...</option>
+            </select>
+            <button type="button" onclick="loadTables()" class="px-3 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white text-sm whitespace-nowrap">Cargar</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Campo clave (ID único)</label>
+            <select id="j-key" class="inp">
+              <option value="">Seleccionar campo...</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Modo de sincronización</label>
+            <select id="j-mode" onchange="toggleDateField()" class="inp">
+              <option value="incremental">Incremental</option>
+              <option value="full">Full</option>
+            </select>
+          </div>
+        </div>
+        <div id="date-field-row">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Campo de fecha (para incremental)</label>
+          <select id="j-date-field" class="inp">
+            <option value="">Sin campo de fecha</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Tipo de ítem (ArdisApp)</label>
+            <select id="j-item-type" class="inp">
+              <option value="">Seleccionar tipo...</option>
+              <option value="material">material</option>
+              <option value="edge">edge</option>
+              <option value="handle">handle</option>
+              <option value="kitchenDoor">kitchenDoor</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Modo de operación</label>
+            <select id="j-op-mode" onchange="togglePassthroughField()" class="inp">
+              <option value="snapshot">snapshot (delta automático)</option>
+              <option value="passthrough">passthrough (campo SQL)</option>
+            </select>
+          </div>
+        </div>
+        <div id="passthrough-field-row" class="hidden">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Campo SQL de operación (passthrough)</label>
+          <select id="j-op-passthrough-field" class="inp">
+            <option value="">Seleccionar campo...</option>
+          </select>
+          <p class="text-xs text-slate-500 mt-1">Cada fila debe tener este campo con valor: <span class="font-mono">upsert</span> o <span class="font-mono">delete</span>.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <input id="j-send-empty-sync" type="checkbox" class="rounded">
+          <label for="j-send-empty-sync" class="text-sm text-slate-300">Enviar request aunque no haya cambios (<span class="font-mono text-slate-400">send_empty_sync</span>)</label>
+        </div>
+      </div>
+      <div class="flex justify-end mt-6">
+        <button onclick="nextStep(2)" class="px-5 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Siguiente →</button>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="step-2" class="hidden bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-5">Paso 2: API destino</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Configuración de API</label>
+          <select id="j-api" class="inp">
+            <option value="">Seleccionar API...</option>
+          </select>
+        </div>
+        <div id="api-preview" class="hidden p-4 bg-base rounded-lg border border-white/5">
+          <p id="api-preview-text" class="text-sm font-mono text-slate-300"></p>
+        </div>
+      </div>
+      <div class="flex justify-between mt-6">
+        <button onclick="nextStep(1)" class="px-5 py-2 border border-white/10 text-slate-300 hover:text-white rounded-lg text-sm">← Anterior</button>
+        <button onclick="nextStep(3)" class="px-5 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Siguiente →</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div id="step-3" class="hidden bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-5">Paso 3: Mapeo de campos</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm mb-4">
+          <thead>
+            <tr class="border-b border-white/5">
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Campo SQL</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Campo API</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Transformación</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Defecto</th>
+              <th class="py-2 px-2"></th>
+            </tr>
+          </thead>
+          <tbody id="map-rows"></tbody>
+        </table>
+        <button type="button" onclick="addMapRow()" class="text-sm text-accent hover:text-blue-400">+ Añadir fila</button>
+      </div>
+      <div id="json-preview" class="mt-5 p-4 bg-base rounded-lg border border-white/5">
+        <p class="text-xs text-slate-500 mb-2">Preview JSON</p>
+        <pre id="json-preview-text" class="text-xs text-slate-300 font-mono whitespace-pre-wrap">{ }</pre>
+      </div>
+      <div class="flex justify-between mt-6">
+        <button onclick="nextStep(2)" class="px-5 py-2 border border-white/10 text-slate-300 hover:text-white rounded-lg text-sm">← Anterior</button>
+        <button onclick="nextStep(4)" class="px-5 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Siguiente →</button>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div id="step-4" class="hidden bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-5">Paso 4: Schedule</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Tipo de schedule</label>
+          <select id="j-sched-type" onchange="renderSchedule()" class="inp">
+            <option value="interval">Cada X minutos</option>
+            <option value="cron">Expresión cron</option>
+          </select>
+        </div>
+        <div id="sched-interval">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Intervalo (minutos)</label>
+          <input id="j-sched-val-interval" type="number" min="1" value="30" class="inp w-32" oninput="updateSchedulePreview()">
+        </div>
+        <div id="sched-cron" class="hidden">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Expresión cron</label>
+          <input id="j-sched-val-cron" type="text" class="inp" placeholder="*/30 * * * *" oninput="updateSchedulePreview()">
+        </div>
+        <div id="sched-preview" class="p-3 bg-base rounded-lg border border-white/5 text-sm text-slate-300 font-mono"></div>
+        <div class="flex items-center gap-3">
+          <input id="j-activate" type="checkbox" class="rounded">
+          <label for="j-activate" class="text-sm text-slate-300">Activar inmediatamente al guardar</label>
+        </div>
+      </div>
+      <div class="flex justify-between mt-6">
+        <button onclick="nextStep(3)" class="px-5 py-2 border border-white/10 text-slate-300 hover:text-white rounded-lg text-sm">← Anterior</button>
+        <button onclick="saveJob()" class="px-5 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium" id="save-btn">Guardar job</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    AUTH.requireAuth();
+    let currentStep = 1, editingId = null, sqlFields = [], fieldMaps = [];
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('id')) {
+      editingId = params.get('id');
+      document.getElementById('page-title').textContent = 'Editar Job';
+    }
+
+    async function init() {
+      // Cargar conexiones
+      try {
+        const r = await API.get('/connections');
+        const sel = document.getElementById('j-conn');
+        (r.data||[]).forEach(c => {
+          sel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+        });
+      } catch(e){}
+
+      // Cargar APIs
+      try {
+        const r = await API.get('/api-configs');
+        const sel = document.getElementById('j-api');
+        (r.data||[]).forEach(c => {
+          sel.innerHTML += `<option value="${c.id}">${c.name} — ${c.method} ${c.base_url}${c.endpoint_path}</option>`;
+        });
+      } catch(e){}
+
+      // Si editando, cargar datos
+      if (editingId) {
+        try {
+          const [jobRes, mapsRes] = await Promise.all([
+            API.get(`/jobs/${editingId}`),
+            API.get(`/jobs/${editingId}/field-maps`),
+          ]);
+          const j = jobRes.data;
+          document.getElementById('j-name').value = j.name;
+          document.getElementById('j-desc').value = j.description || '';
+          document.getElementById('j-conn').value = j.connection_id;
+          document.getElementById('j-mode').value = j.sync_mode;
+          document.getElementById('j-api').value = j.api_config_id;
+          document.getElementById('j-sched-type').value = j.schedule_type;
+          if (j.schedule_type === 'interval') document.getElementById('j-sched-val-interval').value = j.schedule_value;
+          else document.getElementById('j-sched-val-cron').value = j.schedule_value;
+          document.getElementById('j-activate').checked = j.is_active;
+
+          await loadTables();
+          document.getElementById('j-table').value = j.table_or_view;
+          await loadFields();
+          document.getElementById('j-key').value = j.key_field;
+          if (j.date_field) document.getElementById('j-date-field').value = j.date_field;
+          toggleDateField();
+
+          if (j.item_type) document.getElementById('j-item-type').value = j.item_type;
+          document.getElementById('j-op-mode').value = j.op_mode || 'snapshot';
+          togglePassthroughField();
+          if (j.op_passthrough_field) document.getElementById('j-op-passthrough-field').value = j.op_passthrough_field;
+          document.getElementById('j-send-empty-sync').checked = Boolean(j.send_empty_sync);
+
+          fieldMaps = (mapsRes.data||[]).map(m=>({sql:m.sql_field,api:m.api_field,transform:m.transform||'none',def:m.default_value||''}));
+          renderMapRows();
+        } catch(e){ console.error(e); }
+      }
+
+      updateSchedulePreview();
+    }
+
+    async function loadTables() {
+      const connId = document.getElementById('j-conn').value;
+      if (!connId) return;
+      try {
+        const r = await API.get(`/connections/${connId}/tables`);
+        const sel = document.getElementById('j-table');
+        sel.innerHTML = '<option value="">Seleccionar tabla...</option>';
+        (r.data||[]).forEach(t => { sel.innerHTML += `<option value="${t.name}">${t.name} (${t.type})</option>`; });
+      } catch(e){ alert('Error cargando tablas: '+e.message); }
+    }
+
+    async function loadFields() {
+      const connId = document.getElementById('j-conn').value;
+      const table = document.getElementById('j-table').value;
+      if (!connId || !table) return;
+      try {
+        const r = await API.get(`/connections/${connId}/fields?table=${encodeURIComponent(table)}`);
+        sqlFields = r.data || [];
+        const fieldSelectors = [
+          { id: 'j-key',                 empty: 'Seleccionar campo...' },
+          { id: 'j-date-field',          empty: 'Sin campo de fecha' },
+          { id: 'j-op-passthrough-field', empty: 'Seleccionar campo...' },
+        ];
+        fieldSelectors.forEach(({ id, empty }) => {
+          const sel = document.getElementById(id);
+          sel.innerHTML = `<option value="">${empty}</option>`;
+          sqlFields.forEach(f => { sel.innerHTML += `<option value="${f.name}">${f.name} (${f.type})</option>`; });
+        });
+        renderMapRows();
+      } catch(e){ alert('Error cargando campos: '+e.message); }
+    }
+
+    function toggleDateField() {
+      const mode = document.getElementById('j-mode').value;
+      document.getElementById('date-field-row').style.display = mode === 'incremental' ? '' : 'none';
+    }
+
+    function togglePassthroughField() {
+      const mode = document.getElementById('j-op-mode').value;
+      document.getElementById('passthrough-field-row').classList.toggle('hidden', mode !== 'passthrough');
+    }
+
+    function nextStep(n) {
+      if (n > currentStep && !validateStep(currentStep)) return;
+      document.getElementById(`step-${currentStep}`).classList.add('hidden');
+      updateStepIndicator(currentStep, false);
+      currentStep = n;
+      document.getElementById(`step-${currentStep}`).classList.remove('hidden');
+      updateStepIndicator(currentStep, true);
+      if (n === 3 && fieldMaps.length === 0) addMapRow();
+      if (n === 3) updateJsonPreview();
+    }
+
+    function validateStep(step) {
+      if (step === 1) {
+        if (!document.getElementById('j-name').value.trim()) { alert('Ingresa un nombre para el job'); return false; }
+        if (!document.getElementById('j-conn').value) { alert('Selecciona una conexión'); return false; }
+        if (!document.getElementById('j-table').value) { alert('Selecciona una tabla'); return false; }
+        if (!document.getElementById('j-key').value) { alert('Selecciona el campo clave'); return false; }
+        if (!document.getElementById('j-item-type').value) { alert('Selecciona el tipo de ítem (ArdisApp)'); return false; }
+        if (document.getElementById('j-op-mode').value === 'passthrough' && !document.getElementById('j-op-passthrough-field').value) {
+          alert('El modo passthrough requiere seleccionar el campo SQL de operación'); return false;
+        }
+      }
+      if (step === 2) {
+        if (!document.getElementById('j-api').value) { alert('Selecciona una API destino'); return false; }
+      }
+      return true;
+    }
+
+    function updateStepIndicator(step, active) {
+      const el = document.getElementById(`s${step}`);
+      if (active) {
+        el.classList.remove('step-inactive');
+        el.querySelector('div').className = 'w-7 h-7 rounded-full bg-accent text-white text-xs flex items-center justify-center font-semibold';
+        el.querySelector('span').className = 'text-sm text-white';
+      } else {
+        el.querySelector('div').className = 'w-7 h-7 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center font-semibold';
+        el.querySelector('span').className = 'text-sm text-emerald-400';
+      }
+    }
+
+    function addMapRow(map=null) {
+      const opts = sqlFields.map(f=>`<option value="${f.name}">${f.name}</option>`).join('');
+      const transforms = ['none','uppercase','lowercase','trim','number','boolean','date_iso','string'];
+      const tOpts = transforms.map(t=>`<option value="${t}">${t}</option>`).join('');
+      const row = document.createElement('tr');
+      row.className = 'border-b border-white/5';
+      row.innerHTML = `
+        <td class="py-1 px-2"><select class="inp map-sql">${opts}</select></td>
+        <td class="py-1 px-2"><input type="text" class="inp map-api" placeholder="campo.anidado"></td>
+        <td class="py-1 px-2"><select class="inp map-transform">${tOpts}</select></td>
+        <td class="py-1 px-2"><input type="text" class="inp map-default" placeholder=""></td>
+        <td class="py-1 px-2"><button type="button" onclick="this.closest('tr').remove();updateJsonPreview()" class="text-red-400 hover:text-red-300 px-2">✕</button></td>
+      `;
+      if (map) {
+        row.querySelector('.map-sql').value = map.sql;
+        row.querySelector('.map-api').value = map.api;
+        row.querySelector('.map-transform').value = map.transform;
+        row.querySelector('.map-default').value = map.def;
+      }
+      row.querySelectorAll('select,input').forEach(el => el.addEventListener('input', updateJsonPreview));
+      document.getElementById('map-rows').appendChild(row);
+      updateJsonPreview();
+    }
+
+    function renderMapRows() {
+      document.getElementById('map-rows').innerHTML = '';
+      if (fieldMaps.length > 0) fieldMaps.forEach(m => addMapRow(m));
+    }
+
+    function getMapRows() {
+      const rows = document.querySelectorAll('#map-rows tr');
+      return Array.from(rows).map((r, i) => ({
+        sql_field: r.querySelector('.map-sql').value,
+        api_field: r.querySelector('.map-api').value,
+        transform: r.querySelector('.map-transform').value,
+        default_value: r.querySelector('.map-default').value || null,
+        sort_order: i,
+      })).filter(m => m.sql_field && m.api_field);
+    }
+
+    function updateJsonPreview() {
+      const maps = getMapRows();
+      const preview = {};
+      maps.forEach(m => {
+        const keys = m.api_field.split('.');
+        let cur = preview;
+        for (let i=0;i<keys.length-1;i++) { if(!cur[keys[i]])cur[keys[i]]={};cur=cur[keys[i]]; }
+        cur[keys[keys.length-1]] = `<${m.sql_field}>`;
+      });
+      document.getElementById('json-preview-text').textContent = JSON.stringify(preview, null, 2);
+    }
+
+    function renderSchedule() {
+      const type = document.getElementById('j-sched-type').value;
+      document.getElementById('sched-interval').style.display = type==='interval'?'':'none';
+      document.getElementById('sched-cron').style.display = type==='cron'?'':'none';
+      updateSchedulePreview();
+    }
+
+    function updateSchedulePreview() {
+      const type = document.getElementById('j-sched-type').value;
+      const val = type==='interval' ? document.getElementById('j-sched-val-interval').value : document.getElementById('j-sched-val-cron').value;
+      const el = document.getElementById('sched-preview');
+      if (type==='interval') el.textContent = `Cada ${val} minuto(s)`;
+      else el.textContent = `Cron: ${val}`;
+    }
+
+    async function saveJob() {
+      const maps = getMapRows();
+      if (maps.length === 0) { alert('Añade al menos un mapeo de campo'); return; }
+
+      const schedType = document.getElementById('j-sched-type').value;
+      const schedVal = schedType==='interval' ? document.getElementById('j-sched-val-interval').value : document.getElementById('j-sched-val-cron').value;
+
+      const opMode = document.getElementById('j-op-mode').value;
+      const jobData = {
+        name: document.getElementById('j-name').value.trim(),
+        description: document.getElementById('j-desc').value.trim() || null,
+        connection_id: document.getElementById('j-conn').value,
+        table_or_view: document.getElementById('j-table').value,
+        key_field: document.getElementById('j-key').value,
+        sync_mode: document.getElementById('j-mode').value,
+        date_field: document.getElementById('j-date-field').value || null,
+        api_config_id: document.getElementById('j-api').value,
+        schedule_type: schedType,
+        schedule_value: schedVal,
+        is_active: document.getElementById('j-activate').checked,
+        item_type: document.getElementById('j-item-type').value || null,
+        op_mode: opMode,
+        op_passthrough_field: opMode === 'passthrough' ? (document.getElementById('j-op-passthrough-field').value || null) : null,
+        send_empty_sync: document.getElementById('j-send-empty-sync').checked,
+      };
+
+      const btn = document.getElementById('save-btn');
+      btn.disabled = true; btn.textContent = 'Guardando...';
+
+      try {
+        let jobRes;
+        if (editingId) {
+          jobRes = await API.put(`/jobs/${editingId}`, jobData);
+        } else {
+          jobRes = await API.post('/jobs', jobData);
+        }
+        const jobId = jobRes.data.id || editingId;
+        await API.post(`/jobs/${jobId}/field-maps`, maps);
+        window.location.href = '/jobs';
+      } catch(err){
+        alert('Error: '+err.message);
+        btn.disabled=false; btn.textContent='Guardar job';
+      }
+    }
+
+    init();
+    toggleDateField();
+    togglePassthroughField();
+    renderSchedule();
+
+    document.getElementById('j-api').addEventListener('change', () => {
+      const sel = document.getElementById('j-api');
+      const preview = document.getElementById('api-preview');
+      if (sel.value) {
+        document.getElementById('api-preview-text').textContent = sel.options[sel.selectedIndex].text;
+        preview.classList.remove('hidden');
+      } else {
+        preview.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

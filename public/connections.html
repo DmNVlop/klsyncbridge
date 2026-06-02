@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Conexiones</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}</style>
+</head>
+<body>
+  <main class="max-w-6xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold text-white">Conexiones SQL Server</h1>
+      <button onclick="openModal()" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+        + Nueva conexión
+      </button>
+    </div>
+
+    <div id="connections-list" class="grid gap-4">
+      <p class="text-slate-400">Cargando...</p>
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+    <div class="bg-surface rounded-2xl w-full max-w-lg border border-white/10 shadow-2xl">
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <h2 id="modal-title" class="font-medium text-white">Nueva conexión</h2>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+      </div>
+      <form id="conn-form" class="px-6 py-5 space-y-4">
+        <input type="hidden" id="conn-id">
+        <div class="grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-400 mb-1">Nombre</label>
+            <input id="f-name" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent" placeholder="ERP Principal">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Host / IP</label>
+            <input id="f-host" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="192.168.1.100">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Puerto</label>
+            <input id="f-port" type="number" value="1433" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Base de datos</label>
+            <input id="f-db" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="MiERP">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Usuario SQL</label>
+            <input id="f-user" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="sa">
+          </div>
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-400 mb-1">Contraseña</label>
+            <input id="f-pass" type="password" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="Dejar vacío para no cambiar">
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="f-encrypt" type="checkbox" checked class="rounded">
+            <label for="f-encrypt" class="text-sm text-slate-300">Cifrar conexión (TLS)</label>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="f-trust" type="checkbox" class="rounded">
+            <label for="f-trust" class="text-sm text-slate-300">Confiar en certificado</label>
+          </div>
+        </div>
+
+        <div id="test-result" class="hidden p-3 rounded-lg text-sm font-mono"></div>
+
+        <div class="flex items-center gap-3 pt-2">
+          <button type="button" onclick="testConnection()" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white text-sm transition-colors">
+            Probar conexión
+          </button>
+          <div class="flex-1"></div>
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white text-sm">Cancelar</button>
+          <button type="submit" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    let connections = [];
+    let editingId = null;
+
+    async function load() {
+      try {
+        const res = await API.get('/connections');
+        connections = res.data || [];
+        renderList();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function renderList() {
+      const el = document.getElementById('connections-list');
+      if (connections.length === 0) {
+        el.innerHTML = '<div class="bg-surface rounded-xl border border-white/5 p-8 text-center text-slate-400">No hay conexiones. Crea una para comenzar.</div>';
+        return;
+      }
+      el.innerHTML = connections.map(c => `
+        <div class="bg-surface rounded-xl border border-white/5 p-5 flex items-center justify-between">
+          <div>
+            <h3 class="font-medium text-white">${c.name}</h3>
+            <p class="text-slate-400 text-sm font-mono mt-0.5">${c.host}:${c.port} / ${c.database_name}</p>
+            <p class="text-slate-500 text-xs mt-0.5">Usuario: ${c.username}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="quickTest('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs transition-colors">Test</button>
+            <button onclick="openEdit('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs transition-colors">Editar</button>
+            <button onclick="deleteConn('${c.id}','${c.name.replace(/'/g,"\\'")}');" class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/20 text-xs transition-colors">Eliminar</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function quickTest(id) {
+      try {
+        const res = await API.post(`/connections/${id}/test`);
+        UI.toast(res.data.ok ? res.data.message : res.data.message, res.data.ok ? 'success' : 'error');
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    function openModal(conn = null) {
+      editingId = conn?.id || null;
+      document.getElementById('modal-title').textContent = conn ? 'Editar conexión' : 'Nueva conexión';
+      document.getElementById('conn-id').value = conn?.id || '';
+      document.getElementById('f-name').value = conn?.name || '';
+      document.getElementById('f-host').value = conn?.host || '';
+      document.getElementById('f-port').value = conn?.port || 1433;
+      document.getElementById('f-db').value = conn?.database_name || '';
+      document.getElementById('f-user').value = conn?.username || '';
+      document.getElementById('f-pass').value = '';
+      document.getElementById('f-encrypt').checked = conn ? conn.encrypt : true;
+      document.getElementById('f-trust').checked = conn?.trust_cert || false;
+      document.getElementById('test-result').classList.add('hidden');
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function openEdit(id) {
+      const conn = connections.find(c => c.id === id);
+      if (conn) openModal(conn);
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.add('hidden');
+      editingId = null;
+    }
+
+    async function testConnection() {
+      const resultEl = document.getElementById('test-result');
+      resultEl.textContent = 'Probando...';
+      resultEl.className = 'p-3 rounded-lg text-sm font-mono bg-white/5 text-slate-300';
+      resultEl.classList.remove('hidden');
+      try {
+        if (editingId) {
+          const res = await API.post(`/connections/${editingId}/test`);
+          const d = res.data;
+          resultEl.className = `p-3 rounded-lg text-sm font-mono ${d.ok ? 'bg-emerald-900/30 text-emerald-300' : 'bg-red-900/30 text-red-300'}`;
+          resultEl.textContent = d.ok ? '✅ ' + d.message : '❌ ' + d.message;
+        } else {
+          resultEl.textContent = '⚠️  Guarda primero la conexión para poder probarla';
+          resultEl.className = 'p-3 rounded-lg text-sm font-mono bg-amber-900/30 text-amber-300';
+        }
+      } catch (err) {
+        resultEl.className = 'p-3 rounded-lg text-sm font-mono bg-red-900/30 text-red-300';
+        resultEl.textContent = '❌ ' + err.message;
+      }
+    }
+
+    function getFormData() {
+      return {
+        name: document.getElementById('f-name').value.trim(),
+        host: document.getElementById('f-host').value.trim(),
+        port: parseInt(document.getElementById('f-port').value, 10),
+        database_name: document.getElementById('f-db').value.trim(),
+        username: document.getElementById('f-user').value.trim(),
+        password: document.getElementById('f-pass').value,
+        encrypt: document.getElementById('f-encrypt').checked,
+        trust_cert: document.getElementById('f-trust').checked,
+      };
+    }
+
+    document.getElementById('conn-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = getFormData();
+      try {
+        if (editingId) {
+          await API.put(`/connections/${editingId}`, data);
+        } else {
+          await API.post('/connections', data);
+        }
+        closeModal();
+        UI.toast('Conexión guardada');
+        load();
+      } catch (err) {
+        UI.toast('Error: ' + err.message, 'error');
+      }
+    });
+
+    async function deleteConn(id, name) {
+      const ok = await UI.confirmDialog('Eliminar conexión', `¿Eliminar "${name}"? Esta acción no se puede deshacer.`, 'Eliminar', 'bg-red-700 hover:bg-red-600 text-white');
+      if (!ok) return;
+      try {
+        await API.delete(`/connections/${id}`);
+        UI.toast('Conexión eliminada');
+        load();
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    load();
+  </script>
+</body>
+</html>

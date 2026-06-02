@@ -1,0 +1,33 @@
+# ── Dependencias ──────────────────────────────────────────────
+node_modules/
+
+# ── Datos de runtime (generados por setup.js, nunca en repo) ──
+data/
+logs/
+
+# ── Entorno local ─────────────────────────────────────────────
+.env
+
+# ── Documentación interna de desarrollo ───────────────────────
+project-doc/
+
+# ── Herramientas de agentes IA ────────────────────────────────
+.agents/
+.claude/
+
+# ── Prerrequisitos (binarios pesados, se distribuyen aparte) ──
+prereqs/
+
+# ── Archivos temporales / OS ──────────────────────────────────
+temp/
+*.tmp
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# ── SQLite WAL (nunca en repo) ────────────────────────────────
+*.db-shm
+*.db-wal
+
+# ── Archivo suelto de query de desarrollo ────────────────────
+query

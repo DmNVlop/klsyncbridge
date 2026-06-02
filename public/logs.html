@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Logs</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}</style>
+</head>
+<body>
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold text-white">Logs de ejecución</h1>
+      <button onclick="cleanup()" class="px-3 py-1.5 border border-white/10 text-slate-400 hover:text-white rounded-lg text-sm transition-colors">
+        Limpiar logs antiguos
+      </button>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-white/5 p-4 mb-6 flex items-center gap-4 flex-wrap">
+      <select id="f-status" onchange="load()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+        <option value="">Todos los estados</option>
+        <option value="success">Exitoso</option>
+        <option value="error">Error</option>
+        <option value="running">Ejecutando</option>
+        <option value="partial">Parcial</option>
+      </select>
+      <input id="f-date-from" type="date" onchange="load()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+      <input id="f-date-to" type="date" onchange="load()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+      <button onclick="clearFilters()" class="text-sm text-slate-400 hover:text-white">Limpiar filtros</button>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-white/5 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-white/5">
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Job</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Inicio</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Duración</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Leídos</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Enviados</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Estado</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">HTTP</th>
+          </tr>
+        </thead>
+        <tbody id="logs-tbody">
+          <tr><td colspan="7" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="pagination" class="flex items-center justify-between mt-4 text-sm text-slate-400"></div>
+  </main>
+
+  <!-- Modal detalle -->
+  <div id="detail-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+    <div class="bg-surface rounded-2xl w-full max-w-2xl border border-white/10 shadow-2xl max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between flex-shrink-0">
+        <h2 class="font-medium text-white">Detalle de ejecución</h2>
+        <button onclick="document.getElementById('detail-modal').classList.add('hidden')" class="text-slate-400 hover:text-white text-xl">&times;</button>
+      </div>
+      <div id="detail-content" class="px-6 py-4 overflow-y-auto text-sm font-mono text-slate-300 space-y-2"></div>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    let currentPage = 1;
+    const perPage = 25;
+
+    function duration(s, e) {
+      if (!e) return '—';
+      const ms = new Date(e) - new Date(s);
+      if (ms < 1000) return ms + 'ms';
+      return (ms/1000).toFixed(1) + 's';
+    }
+
+    async function load(page = currentPage) {
+      currentPage = page;
+      const status = document.getElementById('f-status').value;
+      const from = document.getElementById('f-date-from').value;
+      const to = document.getElementById('f-date-to').value;
+      let qs = `?page=${page}&per_page=${perPage}`;
+      if (status) qs += `&status=${status}`;
+      if (from) qs += `&date_from=${from}T00:00:00.000Z`;
+      if (to) qs += `&date_to=${to}T23:59:59.999Z`;
+
+      try {
+        const res = await API.get('/logs' + qs);
+        const logs = res.data || [];
+        const total = res.total || 0;
+        const tbody = document.getElementById('logs-tbody');
+
+        if (logs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-slate-500">Sin registros</td></tr>';
+        } else {
+          tbody.innerHTML = logs.map(l => `
+            <tr onclick="showDetail('${l.id}')" class="border-b border-white/5 hover:bg-white/2 cursor-pointer">
+              <td class="px-6 py-3 text-white">${l.job_name}</td>
+              <td class="px-6 py-3 text-slate-400 font-mono text-xs">${UI.formatDate(l.started_at)}</td>
+              <td class="px-6 py-3 text-slate-400 font-mono text-xs">${duration(l.started_at, l.finished_at)}</td>
+              <td class="px-6 py-3 text-slate-400 font-mono">${l.records_read}</td>
+              <td class="px-6 py-3 text-slate-400 font-mono">${l.records_sent}</td>
+              <td class="px-6 py-3">${UI.statusBadge(l.status)}</td>
+              <td class="px-6 py-3 text-slate-400 font-mono text-xs">${l.http_status||'—'}</td>
+            </tr>
+          `).join('');
+        }
+
+        const totalPages = Math.ceil(total / perPage);
+        const pag = document.getElementById('pagination');
+        if (totalPages <= 1) { pag.innerHTML = ''; return; }
+        pag.innerHTML = `
+          <span>${total} registros — Página ${page} de ${totalPages}</span>
+          <div class="flex gap-2">
+            ${page > 1 ? `<button onclick="load(${page-1})" class="px-3 py-1 rounded border border-white/10 hover:bg-white/5">← Anterior</button>` : ''}
+            ${page < totalPages ? `<button onclick="load(${page+1})" class="px-3 py-1 rounded border border-white/10 hover:bg-white/5">Siguiente →</button>` : ''}
+          </div>
+        `;
+      } catch (err) { console.error(err); }
+    }
+
+    async function showDetail(id) {
+      try {
+        const res = await API.get(`/logs/${id}`);
+        const l = res.data;
+        const hasOpStats = l.records_created != null || l.records_updated != null || l.records_deleted != null || l.records_skipped != null;
+        document.getElementById('detail-content').innerHTML = `
+          <div><span class="text-slate-500">Job:</span> ${l.job_name}</div>
+          <div><span class="text-slate-500">Estado:</span> ${l.status}</div>
+          <div><span class="text-slate-500">Inicio:</span> ${l.started_at}</div>
+          <div><span class="text-slate-500">Fin:</span> ${l.finished_at||'—'}</div>
+          <div class="mt-3 mb-1 text-slate-500 text-xs uppercase tracking-wide">Registros</div>
+          <div class="grid grid-cols-3 gap-2 mb-1">
+            <div class="bg-base rounded-lg p-2 border border-white/5 text-center">
+              <div class="text-lg font-semibold text-white font-mono">${l.records_read ?? 0}</div>
+              <div class="text-xs text-slate-500">leídos</div>
+            </div>
+            <div class="bg-base rounded-lg p-2 border border-white/5 text-center">
+              <div class="text-lg font-semibold text-accent font-mono">${l.records_sent ?? 0}</div>
+              <div class="text-xs text-slate-500">enviados</div>
+            </div>
+            <div class="bg-base rounded-lg p-2 border border-white/5 text-center">
+              <div class="text-lg font-semibold text-red-400 font-mono">${l.records_failed ?? 0}</div>
+              <div class="text-xs text-slate-500">fallidos</div>
+            </div>
+          </div>
+          ${hasOpStats ? `
+          <div class="grid grid-cols-4 gap-2 mt-2">
+            <div class="bg-base rounded-lg p-2 border border-emerald-500/10 text-center">
+              <div class="text-base font-semibold text-emerald-400 font-mono">${l.records_created ?? 0}</div>
+              <div class="text-xs text-slate-500">creados</div>
+            </div>
+            <div class="bg-base rounded-lg p-2 border border-blue-500/10 text-center">
+              <div class="text-base font-semibold text-blue-400 font-mono">${l.records_updated ?? 0}</div>
+              <div class="text-xs text-slate-500">actualizados</div>
+            </div>
+            <div class="bg-base rounded-lg p-2 border border-red-500/10 text-center">
+              <div class="text-base font-semibold text-red-400 font-mono">${l.records_deleted ?? 0}</div>
+              <div class="text-xs text-slate-500">eliminados</div>
+            </div>
+            <div class="bg-base rounded-lg p-2 border border-white/5 text-center">
+              <div class="text-base font-semibold text-slate-400 font-mono">${l.records_skipped ?? 0}</div>
+              <div class="text-xs text-slate-500">sin cambios</div>
+            </div>
+          </div>` : ''}
+          <div class="mt-3 flex gap-4">
+            <div><span class="text-slate-500">HTTP:</span> ${l.http_status||'—'}</div>
+            <div><span class="text-slate-500">Reintentos:</span> ${l.retry_count}</div>
+          </div>
+          ${l.error_message ? `<div class="mt-3 p-3 bg-red-900/20 rounded text-red-300"><span class="text-slate-500">Error:</span> ${l.error_message}</div>` : ''}
+          ${l.details_json ? `<div class="mt-3"><span class="text-slate-500">Detalles:</span><pre class="mt-1 text-xs overflow-x-auto">${JSON.stringify(l.details_json, null, 2)}</pre></div>` : ''}
+        `;
+        document.getElementById('detail-modal').classList.remove('hidden');
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    async function cleanup() {
+      const days = prompt('Eliminar logs anteriores a cuántos días?', '30');
+      if (!days) return;
+      try {
+        const res = await API.delete(`/logs/cleanup?days=${days}`);
+        UI.toast(`${res.data.deleted} registros eliminados`);
+        load();
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    function clearFilters() {
+      document.getElementById('f-status').value = '';
+      document.getElementById('f-date-from').value = '';
+      document.getElementById('f-date-to').value = '';
+      load(1);
+    }
+
+    load();
+  </script>
+</body>
+</html>

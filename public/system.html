@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Sistema</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>
+    body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}
+    #output-log::-webkit-scrollbar{width:6px}
+    #output-log::-webkit-scrollbar-track{background:transparent}
+    #output-log::-webkit-scrollbar-thumb{background:#334155;border-radius:3px}
+  </style>
+</head>
+<body>
+  <!-- Acceso denegado -->
+  <div id="access-denied" class="hidden max-w-2xl mx-auto px-6 py-16 text-center">
+    <div class="text-slate-500 text-4xl mb-4">🔒</div>
+    <h2 class="text-lg font-medium text-white mb-2">Acceso restringido</h2>
+    <p class="text-slate-400 text-sm">Esta sección es solo para el administrador master.</p>
+  </div>
+
+  <!-- Contenido principal -->
+  <main id="main-content" class="hidden max-w-3xl mx-auto px-6 py-8 space-y-6">
+    <h1 class="text-2xl font-semibold text-white">Sistema</h1>
+
+    <div class="bg-surface rounded-xl border border-white/5 p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-medium text-white">Servicio Windows</h2>
+        <button onclick="loadStatus()" id="btn-refresh" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white text-xs transition-colors">
+          ↺ Actualizar
+        </button>
+      </div>
+      <div id="service-status" class="flex items-center gap-3">
+        <div class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></div>
+        <span class="text-slate-400 text-sm font-mono">Consultando...</span>
+      </div>
+      <div id="service-raw" class="hidden mt-3 text-xs text-slate-600 font-mono whitespace-pre bg-base rounded-lg p-3 border border-white/5 leading-relaxed"></div>
+      <button onclick="toggleRaw()" id="btn-raw" class="hidden mt-2 text-xs text-slate-600 hover:text-slate-400">Ver detalles técnicos</button>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-1">Gestión del servicio</h2>
+      <p class="text-xs text-slate-500 mb-5">Estas operaciones requieren que el proceso corra con privilegios de Administrador de Windows.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="bg-base rounded-xl border border-white/5 p-4 flex flex-col gap-3">
+          <div>
+            <div class="text-sm font-medium text-white mb-1">Instalar servicio</div>
+            <div class="text-xs text-slate-500">Registra KLSyncBridge como servicio Windows con arranque automático y recovery.</div>
+          </div>
+          <button onclick="runAction('install')" id="btn-install" class="mt-auto px-3 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Instalar
+          </button>
+        </div>
+        <div class="bg-base rounded-xl border border-white/5 p-4 flex flex-col gap-3">
+          <div>
+            <div class="text-sm font-medium text-white mb-1">Desinstalar servicio</div>
+            <div class="text-xs text-slate-500">Detiene y elimina el servicio Windows. La configuración y datos no se borran.</div>
+          </div>
+          <button onclick="runAction('uninstall')" id="btn-uninstall" class="mt-auto px-3 py-2 bg-red-900/40 hover:bg-red-900/60 border border-red-500/30 text-red-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Desinstalar
+          </button>
+        </div>
+        <div class="bg-base rounded-xl border border-white/5 p-4 flex flex-col gap-3">
+          <div>
+            <div class="text-sm font-medium text-white mb-1">Reinstalar servicio</div>
+            <div class="text-xs text-slate-500">Desinstala e instala en un solo paso. Útil para aplicar cambios de configuración.</div>
+          </div>
+          <button onclick="runAction('reinstall')" id="btn-reinstall" class="mt-auto px-3 py-2 bg-amber-900/40 hover:bg-amber-900/60 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Reinstalar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-1">Acceso directo</h2>
+      <p class="text-xs text-slate-500 mb-4">
+        Recrea el acceso directo en el Escritorio y en el Menú Inicio apuntando a
+        <span class="font-mono text-slate-400">http://localhost:3847</span>.
+        Útil si se eliminó el acceso directo accidentalmente.
+      </p>
+      <button onclick="runAction('create-shortcuts')" id="btn-create-shortcuts" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        Recrear acceso directo
+      </button>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-amber-500/10 p-6">
+      <h2 class="font-medium text-white mb-1">Reinicialización del sistema</h2>
+      <p class="text-xs text-slate-500 mb-4">
+        Ejecuta el setup nuevamente. Solo genera los componentes que falten (clave de cifrado, base de datos, JWT secret).
+        <strong class="text-slate-300"> No borra datos ni resetea el usuario admin si ya existe.</strong>
+      </p>
+      <button onclick="runAction('setup')" id="btn-setup" class="px-4 py-2 bg-amber-900/30 hover:bg-amber-900/50 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        Ejecutar setup
+      </button>
+    </div>
+
+    <div id="log-section" class="hidden bg-surface rounded-xl border border-white/5 p-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-medium text-white text-sm">Salida del proceso</h2>
+        <button onclick="clearLog()" class="text-xs text-slate-600 hover:text-slate-400">Limpiar</button>
+      </div>
+      <pre id="output-log" class="text-xs font-mono text-slate-300 bg-base rounded-lg p-4 border border-white/5 max-h-72 overflow-y-auto whitespace-pre-wrap leading-relaxed"></pre>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    const currentUser = AUTH.getUser();
+    if (!currentUser?.is_master) {
+      document.getElementById('access-denied').classList.remove('hidden');
+    } else {
+      document.getElementById('main-content').classList.remove('hidden');
+      loadStatus();
+    }
+
+    let rawVisible = false;
+
+    async function loadStatus() {
+      const el = document.getElementById('service-status');
+      el.innerHTML = `<div class="w-2 h-2 rounded-full bg-slate-600 animate-pulse"></div><span class="text-slate-400 text-sm font-mono">Consultando...</span>`;
+      document.getElementById('service-raw').classList.add('hidden');
+      document.getElementById('btn-raw').classList.add('hidden');
+      try {
+        const res = await API.get('/system/status');
+        renderStatus(res.data);
+      } catch (e) {
+        el.innerHTML = `<div class="w-2 h-2 rounded-full bg-red-500"></div><span class="text-red-400 text-sm font-mono">Error al consultar estado</span>`;
+      }
+    }
+
+    function renderStatus(data) {
+      const el = document.getElementById('service-status');
+      const rawEl = document.getElementById('service-raw');
+      const btnRaw = document.getElementById('btn-raw');
+
+      if (!data.installed) {
+        el.innerHTML = `
+          <div class="w-2.5 h-2.5 rounded-full bg-slate-500"></div>
+          <span class="text-slate-400 text-sm font-mono">No instalado</span>
+          <span class="text-xs text-slate-600 ml-1">— El servicio Windows no está registrado</span>`;
+        return;
+      }
+
+      const stateMap = {
+        RUNNING:       { dot: 'bg-emerald-500',              text: 'text-emerald-400', label: 'En ejecución' },
+        STOPPED:       { dot: 'bg-slate-500',                text: 'text-slate-400',   label: 'Detenido' },
+        START_PENDING: { dot: 'bg-amber-400 animate-pulse',  text: 'text-amber-400',   label: 'Iniciando...' },
+        STOP_PENDING:  { dot: 'bg-amber-400 animate-pulse',  text: 'text-amber-400',   label: 'Deteniendo...' },
+        PAUSED:        { dot: 'bg-yellow-500',               text: 'text-yellow-400',  label: 'Pausado' },
+      };
+      const cfg = stateMap[data.state] || { dot: 'bg-slate-400', text: 'text-slate-300', label: data.state };
+
+      el.innerHTML = `
+        <div class="w-2.5 h-2.5 rounded-full ${cfg.dot}"></div>
+        <span class="${cfg.text} text-sm font-mono font-medium">${cfg.label}</span>`;
+
+      if (data.raw) {
+        rawEl.textContent = data.raw;
+        btnRaw.classList.remove('hidden');
+      }
+    }
+
+    function toggleRaw() {
+      const rawEl = document.getElementById('service-raw');
+      const btn = document.getElementById('btn-raw');
+      rawVisible = !rawVisible;
+      rawEl.classList.toggle('hidden', !rawVisible);
+      btn.textContent = rawVisible ? 'Ocultar detalles técnicos' : 'Ver detalles técnicos';
+    }
+
+    function appendLog(text) {
+      const section = document.getElementById('log-section');
+      const log = document.getElementById('output-log');
+      section.classList.remove('hidden');
+      log.textContent += text;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('output-log').textContent = '';
+      document.getElementById('log-section').classList.add('hidden');
+    }
+
+    const ACTION_CONFIG = {
+      install:            { title: 'Instalar servicio',      body: '¿Instalar KLSyncBridge como servicio Windows? El proceso debe correr como Administrador.',                         okLabel: 'Instalar',    okClass: 'bg-accent hover:bg-blue-500 text-white' },
+      uninstall:          { title: 'Desinstalar servicio',   body: '¿Desinstalar el servicio Windows? Esto detiene el servicio. Los datos y configuración no se borran.',             okLabel: 'Desinstalar', okClass: 'bg-red-700 hover:bg-red-600 text-white' },
+      reinstall:          { title: 'Reinstalar servicio',    body: '¿Reinstalar el servicio Windows? Se desinstalará y volverá a instalar automáticamente.',                          okLabel: 'Reinstalar',  okClass: 'bg-amber-700 hover:bg-amber-600 text-white' },
+      setup:              { title: 'Ejecutar setup',          body: 'Se generarán los componentes faltantes (clave de cifrado, base de datos, JWT). Los datos existentes no se modifican.', okLabel: 'Ejecutar',    okClass: 'bg-amber-700 hover:bg-amber-600 text-white' },
+      'create-shortcuts': { title: 'Recrear acceso directo', body: 'Se creará un acceso directo en el Escritorio y en el Menú Inicio apuntando a http://localhost:3847.',            okLabel: 'Crear',       okClass: 'bg-slate-600 hover:bg-slate-500 text-white', noDisable: true },
+    };
+
+    async function runAction(action) {
+      const cfg = ACTION_CONFIG[action];
+      const ok = await UI.confirmDialog(cfg.title, cfg.body, cfg.okLabel, cfg.okClass);
+      if (!ok) return;
+
+      const btnIds = ['btn-install', 'btn-uninstall', 'btn-reinstall', 'btn-setup', 'btn-create-shortcuts', 'btn-refresh'];
+      btnIds.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = true; });
+
+      const labels = { install: 'Instalando...', uninstall: 'Desinstalando...', reinstall: 'Reinstalando...', setup: 'Ejecutando setup...', 'create-shortcuts': 'Creando...' };
+      const btn = document.getElementById(`btn-${action}`);
+      const origText = btn ? btn.textContent : '';
+      if (btn) btn.textContent = labels[action];
+
+      appendLog(`\n▶ ${cfg.title}: ${new Date().toLocaleTimeString('es-AR')}\n${'─'.repeat(50)}\n`);
+
+      try {
+        const res = await API.post(`/system/${action}`);
+        appendLog(res.data?.output || 'Operación completada.\n');
+        appendLog('\n✅ Completado.\n');
+        UI.toast(`${cfg.title} completado`, 'success');
+        await loadStatus();
+      } catch (e) {
+        appendLog(`\n❌ Error: ${e.message}\n`);
+        UI.toast('Error: ' + e.message, 'error');
+      } finally {
+        btnIds.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
+        if (btn) btn.textContent = origText;
+      }
+    }
+  </script>
+</body>
+</html>

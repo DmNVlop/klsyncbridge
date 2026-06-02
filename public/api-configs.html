@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — APIs</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>
+    body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}
+    .inp{width:100%;padding:0.5rem 0.75rem;border-radius:0.5rem;background:#0f1117;border:1px solid rgba(255,255,255,0.1);color:white;font-size:0.875rem;outline:none}
+    .inp:focus{border-color:#3b82f6}
+    .inp option{background:#1a1d27}
+  </style>
+</head>
+<body>
+  <main class="max-w-6xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold text-white">Configuraciones de API</h1>
+      <button onclick="openModal()" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">+ Nueva API</button>
+    </div>
+
+    <div id="configs-list" class="grid gap-4">
+      <p class="text-slate-400">Cargando...</p>
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+    <div class="bg-surface rounded-2xl w-full max-w-xl border border-white/10 shadow-2xl max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between flex-shrink-0">
+        <h2 id="modal-title" class="font-medium text-white">Nueva API</h2>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+      </div>
+      <form id="api-form" class="px-6 py-5 space-y-4 overflow-y-auto">
+        <input type="hidden" id="a-id">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Nombre</label>
+          <input id="a-name" type="text" required class="inp" placeholder="API Materiales">
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-400 mb-1">URL Base</label>
+            <input id="a-base-url" type="url" required class="inp" placeholder="https://api.ejemplo.com">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Método</label>
+            <select id="a-method" class="inp">
+              <option>POST</option><option>PUT</option><option>PATCH</option><option>GET</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Endpoint Path</label>
+          <input id="a-path" type="text" required class="inp" placeholder="/v1/materiales">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Tipo de autenticación</label>
+          <select id="a-auth-type" onchange="renderAuthFields()" class="inp">
+            <option value="none">Sin autenticación</option>
+            <option value="bearer">Bearer Token</option>
+            <option value="api_key">API Key</option>
+            <option value="basic">HTTP Basic</option>
+            <option value="login">Login dinámico</option>
+          </select>
+        </div>
+        <div id="auth-fields"></div>
+        <div id="test-result" class="hidden p-3 rounded-lg text-sm font-mono"></div>
+        <div class="flex items-center gap-3 pt-2">
+          <button type="button" onclick="testApi()" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white text-sm">Probar</button>
+          <div class="flex-1"></div>
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 text-sm">Cancelar</button>
+          <button type="submit" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    let configs = [], editingId = null;
+
+    async function load() {
+      try {
+        const res = await API.get('/api-configs');
+        configs = res.data || [];
+        render();
+      } catch (err) { console.error(err); }
+    }
+
+    function render() {
+      const el = document.getElementById('configs-list');
+      if (!configs.length) {
+        el.innerHTML = '<div class="bg-surface rounded-xl border border-white/5 p-8 text-center text-slate-400">Sin APIs configuradas</div>';
+        return;
+      }
+      el.innerHTML = configs.map(c => `
+        <div class="bg-surface rounded-xl border border-white/5 p-5 flex items-center justify-between">
+          <div>
+            <h3 class="font-medium text-white">${c.name}</h3>
+            <p class="text-slate-400 text-sm font-mono mt-0.5">${c.method} ${c.base_url}${c.endpoint_path}</p>
+            <span class="inline-block mt-1 px-2 py-0.5 bg-white/5 text-slate-400 text-xs rounded font-mono">${c.auth_type}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="quickTest('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">Test</button>
+            <button onclick="openEdit('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">Editar</button>
+            <button onclick="del('${c.id}','${c.name.replace(/'/g,"\\'")}');" class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 text-xs">Eliminar</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderAuthFields() {
+      const type = document.getElementById('a-auth-type').value;
+      const el = document.getElementById('auth-fields');
+      const templates = {
+        none: '',
+        bearer: `<div><label class="block text-xs font-medium text-slate-400 mb-1">Token</label><input id="ac-token" type="password" class="inp" placeholder="Bearer token fijo"></div>`,
+        api_key: `
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-medium text-slate-400 mb-1">Nombre del header/param</label><input id="ac-key-name" class="inp" placeholder="X-Api-Key"></div>
+            <div><label class="block text-xs font-medium text-slate-400 mb-1">Ubicación</label><select id="ac-in" class="inp"><option value="header">Header</option><option value="query">Query param</option></select></div>
+          </div>
+          <div><label class="block text-xs font-medium text-slate-400 mb-1">Valor</label><input id="ac-key-value" type="password" class="inp" placeholder="valor secreto"></div>`,
+        basic: `
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-medium text-slate-400 mb-1">Usuario</label><input id="ac-basic-user" class="inp"></div>
+            <div><label class="block text-xs font-medium text-slate-400 mb-1">Contraseña</label><input id="ac-basic-pass" type="password" class="inp"></div>
+          </div>`,
+        login: `
+          <div><label class="block text-xs font-medium text-slate-400 mb-1">URL de login</label><input id="ac-login-url" type="url" class="inp" placeholder="https://api.ejemplo.com/auth/login"></div>
+          <div><label class="block text-xs font-medium text-slate-400 mb-1">Usuario</label><input id="ac-login-user" class="inp"></div>
+          <div><label class="block text-xs font-medium text-slate-400 mb-1">Contraseña</label><input id="ac-login-pass" type="password" class="inp"></div>
+          <div><label class="block text-xs font-medium text-slate-400 mb-1">Ruta del token (dot-notation)</label><input id="ac-token-path" class="inp" placeholder="data.token"></div>`,
+      };
+      el.innerHTML = templates[type] || '';
+    }
+
+    function getAuthConfig() {
+      const type = document.getElementById('a-auth-type').value;
+      if (type === 'none') return null;
+      if (type === 'bearer') return { token: document.getElementById('ac-token')?.value };
+      if (type === 'api_key') return { key_name: document.getElementById('ac-key-name')?.value, key_value: document.getElementById('ac-key-value')?.value, in: document.getElementById('ac-in')?.value };
+      if (type === 'basic') return { username: document.getElementById('ac-basic-user')?.value, password: document.getElementById('ac-basic-pass')?.value };
+      if (type === 'login') return {
+        login_url: document.getElementById('ac-login-url')?.value,
+        username: document.getElementById('ac-login-user')?.value,
+        password: document.getElementById('ac-login-pass')?.value,
+        token_path: document.getElementById('ac-token-path')?.value,
+        method: 'POST',
+        body: { username: '{{username}}', password: '{{password}}' },
+      };
+      return null;
+    }
+
+    function getFormData() {
+      return {
+        name: document.getElementById('a-name').value.trim(),
+        base_url: document.getElementById('a-base-url').value.trim(),
+        method: document.getElementById('a-method').value,
+        endpoint_path: document.getElementById('a-path').value.trim(),
+        auth_type: document.getElementById('a-auth-type').value,
+        auth_config: getAuthConfig(),
+      };
+    }
+
+    function openModal() {
+      editingId = null;
+      document.getElementById('modal-title').textContent = 'Nueva API';
+      document.getElementById('a-id').value = '';
+      document.getElementById('a-name').value = '';
+      document.getElementById('a-base-url').value = '';
+      document.getElementById('a-method').value = 'POST';
+      document.getElementById('a-path').value = '';
+      document.getElementById('a-auth-type').value = 'none';
+      renderAuthFields();
+      document.getElementById('test-result').classList.add('hidden');
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function openEdit(id) {
+      const c = configs.find(x => x.id === id);
+      if (!c) return;
+      editingId = id;
+      document.getElementById('modal-title').textContent = 'Editar API';
+      document.getElementById('a-id').value = id;
+      document.getElementById('a-name').value = c.name;
+      document.getElementById('a-base-url').value = c.base_url;
+      document.getElementById('a-method').value = c.method;
+      document.getElementById('a-path').value = c.endpoint_path;
+      document.getElementById('a-auth-type').value = c.auth_type;
+      renderAuthFields();
+      document.getElementById('test-result').classList.add('hidden');
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.add('hidden');
+      editingId = null;
+    }
+
+    async function testApi() {
+      if (!editingId) { UI.toast('Guarda primero la configuración para probarla', 'warning'); return; }
+      const el = document.getElementById('test-result');
+      el.textContent = 'Probando...'; el.className = 'p-3 rounded-lg text-sm font-mono bg-white/5 text-slate-300'; el.classList.remove('hidden');
+      try {
+        const res = await API.post(`/api-configs/${editingId}/test`);
+        const d = res.data;
+        el.className = `p-3 rounded-lg text-sm font-mono ${d.ok ? 'bg-emerald-900/30 text-emerald-300' : 'bg-red-900/30 text-red-300'}`;
+        el.textContent = d.ok ? '✅ ' + d.message : '❌ ' + d.message;
+      } catch (err) { el.className = 'p-3 rounded-lg text-sm font-mono bg-red-900/30 text-red-300'; el.textContent = '❌ ' + err.message; }
+    }
+
+    async function quickTest(id) {
+      try {
+        const r = await API.post(`/api-configs/${id}/test`);
+        UI.toast(r.data.ok ? r.data.message : r.data.message, r.data.ok ? 'success' : 'error');
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    document.getElementById('api-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = getFormData();
+      try {
+        if (editingId) await API.put(`/api-configs/${editingId}`, data);
+        else await API.post('/api-configs', data);
+        closeModal();
+        UI.toast('API guardada');
+        load();
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    });
+
+    async function del(id, name) {
+      const ok = await UI.confirmDialog('Eliminar API', `¿Eliminar "${name}"? Esta acción no se puede deshacer.`, 'Eliminar', 'bg-red-700 hover:bg-red-600 text-white');
+      if (!ok) return;
+      try { await API.delete(`/api-configs/${id}`); UI.toast('API eliminada'); load(); }
+      catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    load();
+    renderAuthFields();
+  </script>
+</body>
+</html>

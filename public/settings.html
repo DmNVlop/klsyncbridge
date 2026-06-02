@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Configuración</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>
+    body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}
+    .inp{width:100%;padding:0.5rem 0.75rem;border-radius:0.5rem;background:#0f1117;border:1px solid rgba(255,255,255,0.1);color:white;font-size:0.875rem;outline:none}
+    .inp:focus{border-color:#3b82f6}
+  </style>
+</head>
+<body>
+  <main class="max-w-2xl mx-auto px-6 py-8">
+    <h1 class="text-2xl font-semibold text-white mb-6">Configuración general</h1>
+
+    <div class="space-y-4">
+      <div class="bg-surface rounded-xl border border-white/5 p-6">
+        <h2 class="font-medium text-white mb-4">Aplicación</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Nombre de la instalación</label>
+            <input id="s-name" type="text" class="inp" placeholder="KLSyncBridge">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Puerto (requiere reinicio del servicio)</label>
+            <input id="s-port" type="number" min="1024" max="65535" class="inp w-32">
+            <p class="text-xs text-slate-500 mt-1">Puerto actual: <span id="current-port" class="font-mono">—</span></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-white/5 p-6">
+        <h2 class="font-medium text-white mb-4">Logs</h2>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Retención de logs (días)</label>
+          <input id="s-retention" type="number" min="1" max="365" class="inp w-32">
+        </div>
+      </div>
+
+      <div class="bg-surface rounded-xl border border-white/5 p-6">
+        <h2 class="font-medium text-white mb-4">Jobs activos en el scheduler</h2>
+        <div id="scheduler-status" class="text-sm text-slate-400 font-mono">Cargando...</div>
+      </div>
+
+      <div class="flex justify-end">
+        <button onclick="save()" class="px-5 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">Guardar configuración</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    async function load() {
+      try {
+        const schRes = await API.get('/jobs/scheduler/status');
+        const jobs = schRes.data || [];
+        const el = document.getElementById('scheduler-status');
+        if (jobs.length === 0) {
+          el.textContent = 'No hay jobs activos en el scheduler';
+        } else {
+          el.innerHTML = jobs.map(j => `
+            <div class="flex items-center justify-between py-1">
+              <span>${j.job_name}</span>
+              <span class="text-slate-500">${j.expression}</span>
+            </div>
+          `).join('');
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function save() {
+      UI.toast('Configuración guardada (requiere implementación del endpoint /api/settings)', 'info');
+    }
+
+    load();
+  </script>
+</body>
+</html>

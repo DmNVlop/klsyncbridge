@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}</style>
+</head>
+<body>
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <h1 class="text-2xl font-semibold text-white mb-6">Dashboard</h1>
+
+    <div class="grid grid-cols-4 gap-4 mb-8">
+      <div class="bg-surface rounded-xl p-5 border border-white/5">
+        <p class="text-slate-400 text-sm mb-1">Total Jobs</p>
+        <p id="stat-total" class="text-3xl font-semibold text-white font-mono">—</p>
+      </div>
+      <div class="bg-surface rounded-xl p-5 border border-white/5">
+        <p class="text-slate-400 text-sm mb-1">Jobs Activos</p>
+        <p id="stat-active" class="text-3xl font-semibold text-accent font-mono">—</p>
+      </div>
+      <div class="bg-surface rounded-xl p-5 border border-white/5">
+        <p class="text-slate-400 text-sm mb-1">Éxitos (24h)</p>
+        <p id="stat-success" class="text-3xl font-semibold text-emerald-400 font-mono">—</p>
+      </div>
+      <div class="bg-surface rounded-xl p-5 border border-white/5">
+        <p class="text-slate-400 text-sm mb-1">Errores (24h)</p>
+        <p id="stat-error" class="text-3xl font-semibold text-red-400 font-mono">—</p>
+      </div>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-white/5 mb-8">
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <h2 class="font-medium text-white">Jobs</h2>
+        <a href="/jobs" class="text-sm text-accent hover:text-blue-400">Ver todos →</a>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-white/5">
+              <th class="text-left px-6 py-3 text-slate-400 font-medium">Nombre</th>
+              <th class="text-left px-6 py-3 text-slate-400 font-medium">Estado</th>
+              <th class="text-left px-6 py-3 text-slate-400 font-medium">Último resultado</th>
+              <th class="text-left px-6 py-3 text-slate-400 font-medium">Última ejecución</th>
+              <th class="text-left px-6 py-3 text-slate-400 font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-tbody">
+            <tr><td colspan="5" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-white/5">
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <h2 class="font-medium text-white">Últimas ejecuciones</h2>
+        <a href="/logs" class="text-sm text-accent hover:text-blue-400">Ver todos →</a>
+      </div>
+      <div id="recent-logs" class="divide-y divide-white/5">
+        <p class="px-6 py-4 text-slate-500 text-sm">Cargando...</p>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav({ showUsername: true });
+
+    async function runNow(jobId, name) {
+      const ok = await UI.confirmDialog(`Ejecutar "${name}"`, '¿Ejecutar este job ahora?', 'Ejecutar');
+      if (!ok) return;
+      try {
+        await API.post(`/jobs/${jobId}/run-now`);
+        UI.toast('Job ejecutado correctamente');
+        loadData();
+      } catch (err) {
+        UI.toast('Error: ' + err.message, 'error');
+      }
+    }
+
+    async function loadData() {
+      try {
+        const [jobsRes, logsRes] = await Promise.all([
+          API.get('/jobs'),
+          API.get('/logs?per_page=10'),
+        ]);
+
+        const jobs = jobsRes.data || [];
+        const logs = logsRes.data || [];
+
+        document.getElementById('stat-total').textContent = jobs.length;
+        document.getElementById('stat-active').textContent = jobs.filter(j => j.is_active).length;
+
+        const yesterday = new Date(Date.now() - 86400000).toISOString();
+        const recentLogs = logs.filter(l => l.started_at > yesterday);
+        document.getElementById('stat-success').textContent = recentLogs.filter(l => l.status === 'success').length;
+        document.getElementById('stat-error').textContent = recentLogs.filter(l => l.status === 'error').length;
+
+        const tbody = document.getElementById('jobs-tbody');
+        if (jobs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500">No hay jobs configurados. <a href="/jobs" class="text-accent">Crear uno →</a></td></tr>';
+        } else {
+          tbody.innerHTML = jobs.map(j => `
+            <tr class="border-b border-white/5 hover:bg-white/2">
+              <td class="px-6 py-3 text-white font-medium">${j.name}</td>
+              <td class="px-6 py-3">
+                <span class="px-2 py-0.5 rounded text-xs font-medium ${j.is_active ? 'bg-accent/20 text-accent' : 'bg-white/5 text-slate-400'}">
+                  ${j.is_active ? 'Activo' : 'Inactivo'}
+                </span>
+              </td>
+              <td class="px-6 py-3">${UI.statusBadge(j.last_run_status)}</td>
+              <td class="px-6 py-3 text-slate-400 font-mono text-xs">${UI.formatDate(j.last_run_at)}</td>
+              <td class="px-6 py-3">
+                <button onclick="runNow('${j.id}','${j.name.replace(/'/g,"\\'")}');event.stopPropagation()"
+                  class="text-xs px-2 py-1 rounded bg-white/5 hover:bg-accent/20 hover:text-accent text-slate-400 transition-colors">
+                  ▶ Ejecutar
+                </button>
+              </td>
+            </tr>
+          `).join('');
+        }
+
+        const logsEl = document.getElementById('recent-logs');
+        if (logs.length === 0) {
+          logsEl.innerHTML = '<p class="px-6 py-4 text-slate-500 text-sm">Sin ejecuciones recientes</p>';
+        } else {
+          logsEl.innerHTML = logs.slice(0, 10).map(l => `
+            <div class="px-6 py-3 flex items-center justify-between">
+              <div>
+                <span class="text-white text-sm">${l.job_name}</span>
+                <span class="text-slate-500 text-xs ml-2">${UI.formatDate(l.started_at)}</span>
+              </div>
+              <div class="flex items-center gap-4 text-xs font-mono">
+                <span class="text-slate-400">${l.records_sent}/${l.records_read} reg.</span>
+                ${UI.statusBadge(l.status)}
+              </div>
+            </div>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Error cargando dashboard:', err);
+      }
+    }
+
+    loadData();
+    setInterval(loadData, 30000);
+  </script>
+</body>
+</html>
