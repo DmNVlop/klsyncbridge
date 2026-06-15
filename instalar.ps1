@@ -152,16 +152,63 @@ Write-Ok "Arquitectura: x64 ($arch)"
 Write-Host ""
 
 # ============================================================
-# VERIFICAR NODE.JS
+# VERIFICAR / INSTALAR NODE.JS
 # ============================================================
 Write-Step "Verificando Node.js..."
 $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
 if (-not $nodeCmd) {
-    Write-Err "Node.js no esta instalado."
-    Show-Requisitos
-    Read-Host "Presione Enter para salir"
-    exit 1
+    Write-Info "Node.js no encontrado. Buscando instalador..."
+    $nodeMsi = Join-Path $PSScriptRoot "prereqs\node-v24.16.0-x64.msi"
+    
+    if (-not (Test-Path $nodeMsi)) {
+        if (-not $hayInternet) {
+            Write-Err "Node.js no esta instalado y no hay conexion a internet para descargarlo."
+            Write-Err "Por favor, coloque 'node-v24.16.0-x64.msi' en la carpeta 'prereqs/' e intente nuevamente."
+            Show-Requisitos
+            Read-Host "Presione Enter para salir"
+            exit 1
+        }
+        
+        Write-Info "Descargando Node.js 24 LTS x64..."
+        $nodeMsi = "$env:TEMP\node_setup.msi"
+        try {
+            Invoke-DownloadFile 'https://nodejs.org/dist/v24.16.0/node-v24.16.0-x64.msi' $nodeMsi
+        } catch {
+            Write-Err "No se pudo descargar Node.js: $_"
+            Show-Requisitos
+            Read-Host "Presione Enter para salir"
+            exit 1
+        }
+    } else {
+        Write-Ok "Instalador local de Node.js encontrado: prereqs\node-v24.16.0-x64.msi"
+    }
+    
+    Write-Info "Instalando Node.js 24 LTS (modo silencioso)..."
+    $proc = Start-Process msiexec.exe -ArgumentList "/i `"$nodeMsi`" /qn /norestart" -Wait -PassThru
+    if ($nodeMsi -like "$env:TEMP\*") { Remove-Item $nodeMsi -Force -ErrorAction SilentlyContinue }
+    
+    if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { # 3010 = requiere reinicio pero suele funcionar
+        Write-Err "Fallo la instalacion de Node.js (codigo: $($proc.ExitCode))"
+        Read-Host "Presione Enter para salir"
+        exit 1
+    }
+    
+    # Recargar PATH para reconocer el nuevo comando 'node' y 'npm'
+    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+    if ($env:PATH -notlike "*C:\Program Files\nodejs*") {
+        $env:PATH += ";C:\Program Files\nodejs"
+    }
+    
+    $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $nodeCmd) {
+        Write-Err "Node.js se instalo pero el sistema no reconoce el comando 'node'."
+        Write-Err "Por favor, reinicie el ordenador y ejecute instalar.bat de nuevo."
+        Read-Host "Presione Enter para salir"
+        exit 1
+    }
+    Write-Ok "Node.js instalado y configurado correctamente."
 }
+
 $nodeVer = & node --version 2>&1
 # Verificar que Node sea x64
 $ErrorActionPreference = 'SilentlyContinue'
