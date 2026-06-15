@@ -295,6 +295,56 @@ function cleanDirectoryExceptServiceFiles(dirPath) {
   }
 }
 
+// Restaura la versión anterior desde el directorio de respaldo
+async function restoreBackup(backupDir, ROOT, log) {
+  log('\n⚠️ Iniciando restauración (rollback) de la versión anterior...');
+  try {
+    const COPY_DIRS  = ['src', 'public', 'scripts', 'docs'];
+    const COPY_FILES = ['package.json', 'package-lock.json', 'version.json', '.env.example', '.gitignore', '.gitattributes'];
+
+    // 1. Restaurar directorios
+    for (const dir of COPY_DIRS) {
+      const srcDir = path.join(backupDir, dir);
+      const dstDir = path.join(ROOT, dir);
+      if (fs.existsSync(srcDir)) {
+        log(`   Restaurando carpeta ${dir}/...`);
+        if (dir === 'src') {
+          cleanDirectoryExceptServiceFiles(dstDir);
+        } else if (fs.existsSync(dstDir)) {
+          fs.rmSync(dstDir, { recursive: true, force: true });
+        }
+        fs.cpSync(srcDir, dstDir, { recursive: true, force: true });
+      }
+    }
+
+    // 2. Restaurar archivos raíz
+    for (const file of COPY_FILES) {
+      const srcFile = path.join(backupDir, file);
+      const dstFile = path.join(ROOT, file);
+      if (fs.existsSync(srcFile)) {
+        fs.copyFileSync(srcFile, dstFile);
+      }
+    }
+
+    // 3. npm install
+    log('   Restaurando dependencias (npm install)...');
+    await new Promise((resolve, reject) => {
+      const npm = spawn('npm', ['install', '--omit=dev'], { cwd: ROOT, shell: true });
+      npm.on('close', code => code === 0 ? resolve() : reject(new Error(`npm exit ${code}`)));
+      npm.on('error', reject);
+    });
+
+    // 4. Migraciones
+    log('   Re-aplicando configuraciones...');
+    await runScript('setup.js');
+
+    log('✅ Restauración completada con éxito. El sistema ha vuelto a su estado original.');
+  } catch (err) {
+    log(`❌ ERROR CRÍTICO DURANTE EL ROLLBACK: ${err.message}. El sistema puede estar en un estado inconsistente.`);
+    logger.error('System update: critical rollback error', { error: err.message, stack: err.stack });
+  }
+}
+
 // POST /api/system/update
 // Descarga main.zip de GitHub, extrae sobre ROOT preservando data/ y logs/, corre npm install + setup, reinicia
 router.post('/update', async (req, res) => {
@@ -310,16 +360,27 @@ router.post('/update', async (req, res) => {
     logger.info('System update: ' + msg);
   }
 
+  const tmpDir = path.join(ROOT, 'temp');
+  const backupDir = path.join(tmpDir, 'backup');
+  const zipPath = path.join(tmpDir, 'update.zip');
+  const extractDir = path.join(tmpDir, 'extracted');
+  let backupCreated = false;
+
   try {
     const current = localVersion();
     log(`▶ Iniciando actualización desde v${current}`);
-    log(`▶ Descargando desde ${RELEASES_URL} ...`);
 
-    // Descargar ZIP
-    const tmpDir  = path.join(ROOT, 'temp');
-    const zipPath = path.join(tmpDir, 'update.zip');
+    // Limpiar restos anteriores de temp
+    if (fs.existsSync(tmpDir)) {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch (e) {
+        // Ignorar si temp está bloqueado temporalmente
+      }
+    }
     fs.mkdirSync(tmpDir, { recursive: true });
 
+    log(`▶ Descargando desde ${RELEASES_URL} ...`);
     const writer = fs.createWriteStream(zipPath);
     const response = await axios.get(RELEASES_URL, { responseType: 'stream', timeout: 60000 });
     await new Promise((resolve, reject) => {
@@ -329,11 +390,7 @@ router.post('/update', async (req, res) => {
     });
     log('✅ ZIP descargado');
 
-    // Extraer con PowerShell (disponible en Windows 10+)
     log('▶ Extrayendo archivos...');
-    const extractDir = path.join(tmpDir, 'extracted');
-    if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
-
     await new Promise((resolve, reject) => {
       const ps = spawn('powershell', [
         '-NoProfile', '-NonInteractive', '-Command',
@@ -344,15 +401,40 @@ router.post('/update', async (req, res) => {
     });
     log('✅ ZIP extraído');
 
-    // El ZIP de GitHub genera una carpeta raíz "repo-main/"
+    // Validar contenido del ZIP extraído antes de modificar nada
     const entries = fs.readdirSync(extractDir);
     const innerDir = entries.length === 1 ? path.join(extractDir, entries[0]) : extractDir;
+    if (!fs.existsSync(path.join(innerDir, 'src')) || !fs.existsSync(path.join(innerDir, 'package.json'))) {
+      throw new Error('El paquete descargado no contiene una estructura válida de KLSyncBridge.');
+    }
 
-    // Copiar src/, public/, scripts/, package.json, *.json, *.bat, *.ps1
-    // PRESERVAR: data/, logs/, node_modules/, .env
+    // --- PASO DE RESPALDO (BACKUP) ---
+    log('▶ Creando respaldo de seguridad del sistema actual...');
+    fs.mkdirSync(backupDir, { recursive: true });
+    
     const COPY_DIRS  = ['src', 'public', 'scripts', 'docs'];
     const COPY_FILES = ['package.json', 'package-lock.json', 'version.json', '.env.example', '.gitignore', '.gitattributes'];
 
+    for (const dir of COPY_DIRS) {
+      const dstDir = path.join(ROOT, dir);
+      const backupDstDir = path.join(backupDir, dir);
+      if (fs.existsSync(dstDir)) {
+        fs.mkdirSync(backupDstDir, { recursive: true });
+        fs.cpSync(dstDir, backupDstDir, { recursive: true });
+      }
+    }
+    for (const file of COPY_FILES) {
+      const dstFile = path.join(ROOT, file);
+      const backupDstFile = path.join(backupDir, file);
+      if (fs.existsSync(dstFile)) {
+        fs.copyFileSync(dstFile, backupDstFile);
+      }
+    }
+    backupCreated = true;
+    log('✅ Respaldo creado correctamente');
+
+    // --- PASO DE INSTALACIÓN ---
+    log('▶ Aplicando archivos nuevos...');
     for (const dir of COPY_DIRS) {
       const src = path.join(innerDir, dir);
       const dst = path.join(ROOT, dir);
@@ -399,19 +481,16 @@ router.post('/update', async (req, res) => {
           log(`⚠️ Error al restaurar archivos de servicio: ${err.message}`);
         }
       }
-
       log(`✅ Copiado ${dir}/`);
     }
+
     for (const file of COPY_FILES) {
       const src = path.join(innerDir, file);
       const dst = path.join(ROOT, file);
       if (!fs.existsSync(src)) continue;
       fs.copyFileSync(src, dst);
     }
-    log('✅ Archivos actualizados');
-
-    // Limpiar temp
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    log('✅ Archivos copiados');
 
     // npm install
     log('▶ Instalando dependencias (npm install)...');
@@ -429,12 +508,19 @@ router.post('/update', async (req, res) => {
     await runScript('setup.js');
     log('✅ Migraciones aplicadas');
 
+    // Limpiar temp (incluyendo el backup exitoso)
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch (e) {
+      // Ignorar si algún archivo está temporalmente bloqueado
+    }
+
     const newVersion = localVersion();
     log(`\n✅ Actualización completada — v${newVersion}`);
     log('▶ Reiniciando servicio...');
     res.end();
 
-    // Reiniciar después de responder: si es Windows Service usa sc, si no process.exit
+    // Reiniciar después de responder
     setTimeout(async () => {
       try {
         await new Promise((resolve) => {
@@ -443,14 +529,26 @@ router.post('/update', async (req, res) => {
         await new Promise(r => setTimeout(r, 3000));
         execFile('sc', ['start', 'klsyncbridge.exe'], { timeout: 10000 }, () => {});
       } catch {
-        // No es Windows Service — salir y dejar que pm2/forever/nodemon reinicie
         process.exit(0);
       }
     }, 500);
 
   } catch (err) {
-    logger.error('System update: error', { error: err.message });
-    res.write(`\n❌ Error durante la actualización: ${err.message}\n`);
+    logger.error('System update: error during update', { error: err.message, stack: err.stack });
+    log(`\n❌ Error durante la actualización: ${err.message}`);
+
+    if (backupCreated) {
+      await restoreBackup(backupDir, ROOT, log);
+    } else {
+      log('ℹ️ No se realizaron cambios en el sistema, no es necesario hacer rollback.');
+    }
+
+    // Limpiar temp/extracted y update.zip para no dejar basura
+    try {
+      if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+      if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
+    } catch (e) {}
+
     res.end();
   }
 });
