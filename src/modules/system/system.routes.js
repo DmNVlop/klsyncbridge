@@ -50,7 +50,7 @@ router.get('/status', (req, res) => {
     }
 
     const text = stdout || '';
-    const stateMatch = text.match(/STATE\s*:\s*\d+\s+(\w+)/);
+    const stateMatch = text.match(/(?:STATE|ESTADO|STATUS|ETAT|ÉTAT|STATO)\s*:\s*\d+\s+(\w+)/i);
     const state = stateMatch ? stateMatch[1] : 'UNKNOWN';
     return success(res, { installed: true, state, raw: text.trim() });
   });
@@ -127,7 +127,7 @@ function waitForState(targetState, timeoutMs = 15000) {
         if (targetState === 'STOPPED' && (err || text.includes('1060'))) {
           return resolve(); // servicio no existe = parado/desinstalado
         }
-        const stateMatch = text.match(/STATE\s*:\s*\d+\s+(\w+)/);
+        const stateMatch = text.match(/(?:STATE|ESTADO|STATUS|ETAT|ÉTAT|STATO)\s*:\s*\d+\s+(\w+)/i);
         const state = stateMatch ? stateMatch[1] : '';
         if (state === targetState) return resolve();
         if (Date.now() > deadline) return reject(new AppError(`Timeout esperando estado ${targetState}`, 'TIMEOUT', 500));
