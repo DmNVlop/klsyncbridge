@@ -7,12 +7,11 @@ Dirigida al técnico instalador. Tiempo estimado: 15-30 minutos.
 ## Requisitos previos
 
 | Requisito | Versión mínima | Notas |
-|---|---|---|
 | Windows | 10 / Server 2016 | 64 bits |
-| Node.js | 20 LTS | [nodejs.org](https://nodejs.org) — **requerido, no se instala automáticamente** |
+| Node.js | 24 LTS (x64) | Se instala automáticamente si no está presente (usando `prereqs/` o descargando) |
 | SQL Server | 2012+ | El cliente necesita acceso de lectura |
 | Permisos | Administrador local | Para instalar el servicio Windows |
-| Conexión a Internet | — | Solo durante la instalación inicial, para descargar dependencias |
+| Conexión a Internet | — | Opcional. Si no hay internet, se realiza instalación 100% offline usando los instaladores de `prereqs/` |
 
 ---
 
@@ -20,52 +19,59 @@ Dirigida al técnico instalador. Tiempo estimado: 15-30 minutos.
 
 `instalar.bat` verifica el sistema y, si detecta que faltan componentes, los descarga e instala sin intervención del usuario. A continuación se detalla **qué se instala, por qué y de dónde**.
 
-### 1. Python 3.11 *(si no está instalado)*
+### 1. Node.js 24 LTS *(si no está instalado)*
+
+| | |
+|---|---|
+| **Por qué** | KLSyncBridge es una aplicación construida sobre Node.js y requiere el motor V8 para ejecutar su lógica de backend y el servidor Express. |
+| **Qué se instala** | Node.js 24 LTS x64. |
+| **Fuente** | `prereqs/node-v24.16.0-x64.msi` (local) o descarga directa oficial de `nodejs.org` |
+| **Dónde queda** | `C:\Program Files\nodejs\` (instalación estándar del sistema) |
+
+### 2. Python 3.11 *(si no está instalado)*
 
 | | |
 |---|---|
 | **Por qué** | La biblioteca `better-sqlite3` (base de datos interna) incluye código nativo en C++ que debe compilarse durante la instalación de npm. El compilador (`node-gyp`) requiere Python para ejecutarse. |
 | **Qué se instala** | Python 3.11 — intérprete oficial, sin modificaciones. |
-| **Fuente** | `winget` → paquete `Python.Python.3.11` (repositorio oficial de Microsoft) |
-| **Fallback** | Chocolatey (`python311`) si winget no está disponible. |
-| **Dónde queda** | `C:\Users\<usuario>\AppData\Local\Programs\Python\Python311\` (instalación estándar de Python) |
+| **Fuente** | `prereqs/python-3.11.9-amd64.exe` (local) o `python.org` (descarga directa) |
+| **Dónde queda** | `C:\Program Files\Python311\` o `C:\Python311\` (instalación estándar) |
 | **Queda en el sistema** | Sí. Python 3.11 queda instalado como cualquier otra aplicación. No se usa en tiempo de ejecución de KLSyncBridge — solo fue necesario para compilar los módulos. |
 
-### 2. Visual C++ Build Tools 2022 *(si no están instalados)*
+### 3. Visual C++ Build Tools 2022 *(si no están instalados)*
 
 | | |
 |---|---|
 | **Por qué** | El mismo proceso de compilación de `better-sqlite3` requiere el compilador de C++ de Microsoft (`cl.exe`) y las cabeceras del SDK de Windows. |
 | **Qué se instala** | Visual Studio Build Tools 2022 con el workload `VCTools` y el SDK de Windows 11 (22621). Son las herramientas de compilación de Microsoft, sin el IDE. |
-| **Fuente** | `winget` → paquete `Microsoft.VisualStudio.2022.BuildTools` (repositorio oficial de Microsoft) |
-| **Fallback** | Chocolatey (`visualstudio2022buildtools`) si winget no está disponible. |
+| **Fuente** | Carpeta `prereqs/vs_layout/` (modo offline recomendado), bootstrapper local `prereqs/vs_buildtools.exe` o descarga oficial de Microsoft. |
 | **Dónde queda** | `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\` |
 | **Tamaño aproximado** | 3-6 GB en disco (compilador + SDK). |
 | **Tiempo de instalación** | 5-15 minutos dependiendo de la velocidad de descarga. |
 | **Queda en el sistema** | Sí. Se desinstala desde *Panel de control → Programas → Visual Studio Installer* si ya no se necesita. |
 
-### 3. Dependencias Node.js (`npm install`)
+### 4. Dependencias Node.js (`npm install`)
 
 | | |
 |---|---|
 | **Por qué** | KLSyncBridge usa librerías de terceros que deben descargarse del registro público de npm. |
 | **Qué se descarga** | Las librerías listadas en `package.json` (Express, better-sqlite3, mssql, winston, etc.) |
-| **Fuente** | `registry.npmjs.org` (registro público estándar de Node.js) |
+| **Fuente** | `registry.npmjs.org` (registro público estándar de Node.js) o carpetas locales de caché si corresponde. |
 | **Dónde queda** | `node_modules\` dentro de la carpeta de instalación de KLSyncBridge. No modifica el sistema. |
 | **Compilación nativa** | Solo `better-sqlite3` se compila. El resto son JavaScript puro. |
 
-### 4. KLSyncBridge en sí
+### 5. KLSyncBridge en sí
 
 | | |
 |---|---|
 | **Base de datos interna** | `data\klsyncbridge.db` — archivo SQLite, creado localmente. Almacena la configuración de conexiones, jobs y logs de ejecución. No es SQL Server. |
-| **Clave de cifrado** | `data\encryption.key` — generada aleatoriamente en el equipo. Cifra las contraseñas de conexión almacenadas. **No salir del servidor.** |
+| **Clave de cifrado** | `data\encryption.key` — generada aleatoriamente en el equipo. Cifra las contraseñas de conexión almacenadas. **No debe salir del servidor.** |
 | **Servicio Windows** | Nombre: `KLSyncBridge`. Se registra en el Administrador de servicios. Inicia automáticamente con Windows. |
 | **Accesos directos** | Uno en el Escritorio y uno en el Menú Inicio, apuntando a `http://localhost:3847`. |
 | **Logs** | `logs\app-YYYY-MM-DD.log` y `logs\executions-YYYY-MM-DD.log`. Rotación diaria, retención 30 días. |
 | **Puerto de red** | TCP `3847` solo en `localhost`. No abre puertos al exterior. |
 
-> **Resumen para el área de sistemas:** La instalación descarga Python 3.11 y Visual C++ Build Tools 2022 de repositorios oficiales de Microsoft. Estos componentes son necesarios solo durante la instalación para compilar el módulo de base de datos. KLSyncBridge en sí corre completamente en Node.js, no requiere Python ni el compilador en tiempo de ejecución.
+> **Resumen para el área de sistemas:** La instalación instala Node.js 24 LTS, Python 3.11 y Visual C++ Build Tools 2022 de instaladores oficiales (offline en `prereqs/` o descargados de Microsoft/NodeJS/Python). Python y Build Tools son necesarios solo durante la instalación para compilar el módulo de base de datos. KLSyncBridge en sí corre completamente en Node.js, no requiere Python ni el compilador en tiempo de ejecución.
 
 ---
 
@@ -74,16 +80,16 @@ Dirigida al técnico instalador. Tiempo estimado: 15-30 minutos.
 La forma más simple de instalar en un servidor cliente es usando el script incluido:
 
 1. Copiar la carpeta del proyecto al servidor (ej: `C:\KLSyncBridge\`)
-2. Verificar que **Node.js 20 LTS o superior** está instalado (`node --version` en cmd)
-3. Clic derecho en `instalar.bat` → **Ejecutar como administrador**
-4. El script hace todo automáticamente:
-   - Verifica e instala Python 3.11 si no está presente
-   - Verifica e instala Visual C++ Build Tools 2022 si no están presentes
-   - Instala dependencias npm (compila `better-sqlite3`)
-   - Genera clave de cifrado, base de datos y usuario admin
-   - Registra e inicia el servicio Windows
-   - Crea acceso directo en el Escritorio y el Menú Inicio
-5. Al terminar, anota las credenciales que aparecen en pantalla y abre el navegador automáticamente
+2. Clic derecho en `instalar.bat` → **Ejecutar como administrador**
+3. El script hace todo automáticamente:
+   - Verifica e instala **Node.js 24 LTS** si no está presente.
+   - Verifica e instala Python 3.11 si no está presente.
+   - Verifica e instala Visual C++ Build Tools 2022 si no están presentes.
+   - Instala dependencias npm (compila `better-sqlite3`).
+   - Genera clave de cifrado, base de datos y usuario admin.
+   - Registra e inicia el servicio Windows.
+   - Crea acceso directo en el Escritorio y el Menú Inicio.
+4. Al terminar, anota las credenciales que aparecen en pantalla y abre el navegador automáticamente.
 
 > **IMPORTANTE:** Anotar el usuario y contraseña que muestra el script. No se pueden recuperar después.
 
