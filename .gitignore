@@ -2,8 +2,8 @@
 node_modules/
 
 # ── Datos de runtime (generados por setup.js, nunca en repo) ──
-data/
-logs/
+/data/
+/logs/
 
 # ── Entorno local ─────────────────────────────────────────────
 .env

@@ -54,18 +54,17 @@ if not defined INNER (
 for %%F in (src public scripts docs) do (
   if exist "!INNER!\%%F" (
     if "%%F"=="src" (
-      if exist "%~dp0src" (
-        mkdir "%TMP_DIR%\src_backup" >nul 2>&1
-        copy "%~dp0src\klsyncbridge.*" "%TMP_DIR%\src_backup\" >nul 2>&1
-        copy "%~dp0src\KLSyncBridge.*" "%TMP_DIR%\src_backup\" >nul 2>&1
+      if exist "%~dp0src\daemon" (
+        mkdir "%TMP_DIR%\daemon_backup" >nul 2>&1
+        xcopy /e /i /q "%~dp0src\daemon" "%TMP_DIR%\daemon_backup\" >nul 2>&1
       )
     )
     if exist "%~dp0%%F" rmdir /s /q "%~dp0%%F"
     xcopy /e /i /q "!INNER!\%%F" "%~dp0%%F\" >nul
     if "%%F"=="src" (
-      if exist "%TMP_DIR%\src_backup" (
-        copy "%TMP_DIR%\src_backup\klsyncbridge.*" "%~dp0src\" >nul 2>&1
-        copy "%TMP_DIR%\src_backup\KLSyncBridge.*" "%~dp0src\" >nul 2>&1
+      if exist "%TMP_DIR%\daemon_backup" (
+        mkdir "%~dp0src\daemon" >nul 2>&1
+        xcopy /e /i /q "%TMP_DIR%\daemon_backup" "%~dp0src\daemon\" >nul 2>&1
       )
     )
     echo    Copiado: %%F\
