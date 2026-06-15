@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
-  "release_date": "2026-06-02",
-  "changelog": "- Release inicial KLSyncBridge\n- Auth, usuarios, conexiones SQL Server\n- API Configs, Jobs, Executor, Scheduler\n- Dashboard, Logs, Sistema Windows Service"
+  "version": "1.1.0",
+  "release_date": "2026-06-15",
+  "changelog": "- Control Start/Stop del servicio desde UI\n- Indicador de privilegios de Administrador en pantalla Sistema\n- Registro y visualización de logs de integración (integration_logs)\n- Limpieza automática periódica de logs antiguos al iniciar"
 }
