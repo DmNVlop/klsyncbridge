@@ -521,14 +521,27 @@ router.post('/update', async (req, res) => {
     res.end();
 
     // Reiniciar después de responder
-    setTimeout(async () => {
+    setTimeout(() => {
       try {
-        await new Promise((resolve) => {
-          execFile('sc', ['stop', 'klsyncbridge.exe'], { timeout: 10000 }, () => resolve());
+        // Generamos un proceso cmd.exe desacoplado (detached) que esperará 5 segundos
+        // (dando tiempo a que este servicio se detenga por completo) y luego lo iniciará.
+        const { spawn } = require('child_process');
+        const child = spawn('cmd.exe', [
+          '/c',
+          'ping 127.0.0.1 -n 6 >nul && sc start klsyncbridge.exe'
+        ], {
+          detached: true,
+          stdio: 'ignore'
         });
-        await new Promise(r => setTimeout(r, 3000));
-        execFile('sc', ['start', 'klsyncbridge.exe'], { timeout: 10000 }, () => {});
-      } catch {
+        child.unref();
+
+        // Ordenamos al Service Control Manager de Windows detener el servicio actual.
+        // Al detenerse, este proceso Node.js y el wrapper finalizarán, pero el cmd.exe
+        // desacoplado continuará corriendo en background para iniciarlo de nuevo.
+        execFile('sc', ['stop', 'klsyncbridge.exe'], () => {
+          process.exit(0);
+        });
+      } catch (err) {
         process.exit(0);
       }
     }, 500);
