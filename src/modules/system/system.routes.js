@@ -331,8 +331,38 @@ router.post('/update', async (req, res) => {
       const src = path.join(innerDir, dir);
       const dst = path.join(ROOT, dir);
       if (!fs.existsSync(src)) continue;
+
+      // Respaldar archivos del servicio (klsyncbridge.* o KLSyncBridge.*) de node-windows si es 'src'
+      const serviceFiles = [];
+      if (dir === 'src' && fs.existsSync(dst)) {
+        try {
+          const files = fs.readdirSync(dst);
+          for (const file of files) {
+            if (file.toLowerCase().startsWith('klsyncbridge.')) {
+              const content = fs.readFileSync(path.join(dst, file));
+              serviceFiles.push({ file, content });
+            }
+          }
+        } catch (err) {
+          log(`⚠️ Advertencia al respaldar archivos de servicio: ${err.message}`);
+        }
+      }
+
       if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true });
       fs.cpSync(src, dst, { recursive: true });
+
+      // Restaurar archivos del servicio
+      if (dir === 'src' && serviceFiles.length > 0) {
+        try {
+          for (const sFile of serviceFiles) {
+            fs.writeFileSync(path.join(dst, sFile.file), sFile.content);
+          }
+          log(`✅ Restaurados ${serviceFiles.length} archivos del wrapper de servicio`);
+        } catch (err) {
+          log(`⚠️ Error al restaurar archivos de servicio: ${err.message}`);
+        }
+      }
+
       log(`✅ Copiado ${dir}/`);
     }
     for (const file of COPY_FILES) {
