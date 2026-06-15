@@ -235,8 +235,8 @@ router.post('/create-shortcuts', (req, res) => {
 
 const GITHUB_USER    = 'DmNVlop';
 const GITHUB_REPO    = 'klsyncbridge';
-const MANIFEST_URL   = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/main/version.json`;
-const RELEASES_URL   = `https://github.com/${GITHUB_USER}/${GITHUB_REPO}/archive/refs/heads/main.zip`;
+const MANIFEST_URL   = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/master/version.json`;
+const RELEASES_URL   = `https://github.com/${GITHUB_USER}/${GITHUB_REPO}/archive/refs/heads/master.zip`;
 
 function compareVersions(a, b) {
   const pa = a.split('.').map(Number);

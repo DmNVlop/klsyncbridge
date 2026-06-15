@@ -4,7 +4,7 @@ title KLSyncBridge — Actualización manual
 
 set GITHUB_USER=DmNVlop
 set GITHUB_REPO=klsyncbridge
-set ZIP_URL=https://github.com/%GITHUB_USER%/%GITHUB_REPO%/archive/refs/heads/main.zip
+set ZIP_URL=https://github.com/%GITHUB_USER%/%GITHUB_REPO%/archive/refs/heads/master.zip
 set TMP_DIR=%~dp0temp_update
 set ZIP_FILE=%TMP_DIR%\update.zip
 

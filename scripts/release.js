@@ -27,7 +27,7 @@ process.chdir(ROOT);
 // Configuración por defecto
 const GITHUB_USER = 'DmNVlop';
 const GITHUB_REPO = 'klsyncbridge';
-const DEFAULT_BRANCH = 'main';
+const DEFAULT_BRANCH = 'master';
 
 // Colores para consola
 const COLORS = {
