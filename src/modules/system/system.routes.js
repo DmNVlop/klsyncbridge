@@ -269,6 +269,32 @@ router.get('/check-update', async (req, res) => {
   }
 });
 
+// Limpia un directorio recursivamente pero preserva los archivos del wrapper del servicio Windows (klsyncbridge.*)
+function cleanDirectoryExceptServiceFiles(dirPath) {
+  if (!fs.existsSync(dirPath)) return;
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      cleanDirectoryExceptServiceFiles(fullPath);
+      try {
+        fs.rmdirSync(fullPath);
+      } catch (err) {
+        // Ignorar si el directorio no quedó vacío (por contener archivos de servicio preservados)
+      }
+    } else {
+      const isServiceFile = entry.name.toLowerCase().startsWith('klsyncbridge.');
+      if (!isServiceFile) {
+        try {
+          fs.unlinkSync(fullPath);
+        } catch (err) {
+          // Ignorar si el archivo está bloqueado o no se puede borrar
+        }
+      }
+    }
+  }
+}
+
 // POST /api/system/update
 // Descarga main.zip de GitHub, extrae sobre ROOT preservando data/ y logs/, corre npm install + setup, reinicia
 router.post('/update', async (req, res) => {
@@ -348,16 +374,27 @@ router.post('/update', async (req, res) => {
         }
       }
 
-      if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true });
+      if (dir === 'src' && fs.existsSync(dst)) {
+        cleanDirectoryExceptServiceFiles(dst);
+      } else if (fs.existsSync(dst)) {
+        fs.rmSync(dst, { recursive: true, force: true });
+      }
       fs.cpSync(src, dst, { recursive: true });
 
-      // Restaurar archivos del servicio
+      // Restaurar archivos del servicio (solo si no existen, para evitar sobrescribir el ejecutable bloqueado)
       if (dir === 'src' && serviceFiles.length > 0) {
         try {
+          let restoredCount = 0;
           for (const sFile of serviceFiles) {
-            fs.writeFileSync(path.join(dst, sFile.file), sFile.content);
+            const destFilePath = path.join(dst, sFile.file);
+            if (!fs.existsSync(destFilePath)) {
+              fs.writeFileSync(destFilePath, sFile.content);
+              restoredCount++;
+            }
           }
-          log(`✅ Restaurados ${serviceFiles.length} archivos del wrapper de servicio`);
+          if (restoredCount > 0) {
+            log(`✅ Restaurados ${restoredCount} archivos del wrapper de servicio`);
+          }
         } catch (err) {
           log(`⚠️ Error al restaurar archivos de servicio: ${err.message}`);
         }
