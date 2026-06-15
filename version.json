@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "release_date": "2026-06-15",
-  "changelog": "- Control Start/Stop del servicio desde UI\n- Indicador de privilegios de Administrador en pantalla Sistema\n- Registro y visualización de logs de integración (integration_logs)\n- Limpieza automática periódica de logs antiguos al iniciar"
+  "changelog": "Soporte para Windows en espanol en consulta de estado de servicio"
 }
