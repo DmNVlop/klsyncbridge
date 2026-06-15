@@ -12,6 +12,8 @@ const logger = require('./logger.service');
 async function resolveAuth(apiConfig) {
   const { auth_type, auth_config } = apiConfig;
 
+  logger.info('Auth resolver', { auth_type });
+
   switch (auth_type) {
     case AUTH_TYPES.NONE:
       return { headers: {}, params: {} };
@@ -39,7 +41,12 @@ async function resolveAuth(apiConfig) {
     }
 
     case AUTH_TYPES.LOGIN: {
+      const loginStart = Date.now();
       const token = await fetchLoginToken(auth_config);
+      logger.info('Auth login token obtenido', {
+        url: auth_config.login_url,
+        duration_ms: Date.now() - loginStart,
+      });
       return {
         headers: { Authorization: `Bearer ${token}` },
         params: {},

@@ -7,60 +7,130 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
-  <style>body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}</style>
+  <style>
+    body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}
+    .tab-active{border-bottom:2px solid #3b82f6;color:#fff}
+    .tab-inactive{border-bottom:2px solid transparent;color:#94a3b8}
+    pre{white-space:pre-wrap;word-break:break-all}
+    .badge-success{background:#052e16;color:#4ade80;border:1px solid #166534}
+    .badge-error{background:#1c0a0a;color:#f87171;border:1px solid #7f1d1d}
+    .badge-partial{background:#1c1400;color:#fbbf24;border:1px solid #78350f}
+    .badge-running{background:#0d1f3c;color:#60a5fa;border:1px solid #1e3a5f}
+    .badge-ok{background:#052e16;color:#4ade80;border:1px solid #166534}
+    .badge-fail{background:#1c0a0a;color:#f87171;border:1px solid #7f1d1d}
+  </style>
 </head>
 <body>
   <main class="max-w-7xl mx-auto px-6 py-8">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-semibold text-white">Logs de ejecución</h1>
-      <button onclick="cleanup()" class="px-3 py-1.5 border border-white/10 text-slate-400 hover:text-white rounded-lg text-sm transition-colors">
-        Limpiar logs antiguos
-      </button>
+      <h1 class="text-2xl font-semibold text-white">Logs y Auditoría</h1>
+      <span class="text-xs text-slate-500">Retención: 90 días · TTL automático</span>
     </div>
 
-    <div class="bg-surface rounded-xl border border-white/5 p-4 mb-6 flex items-center gap-4 flex-wrap">
-      <select id="f-status" onchange="load()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
-        <option value="">Todos los estados</option>
-        <option value="success">Exitoso</option>
-        <option value="error">Error</option>
-        <option value="running">Ejecutando</option>
-        <option value="partial">Parcial</option>
-      </select>
-      <input id="f-date-from" type="date" onchange="load()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
-      <input id="f-date-to" type="date" onchange="load()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
-      <button onclick="clearFilters()" class="text-sm text-slate-400 hover:text-white">Limpiar filtros</button>
+    <!-- Tabs -->
+    <div class="flex gap-6 border-b border-white/5 mb-6">
+      <button id="tab-exec" onclick="switchTab('exec')" class="pb-3 text-sm font-medium tab-active">Ejecuciones</button>
+      <button id="tab-int" onclick="switchTab('int')" class="pb-3 text-sm font-medium tab-inactive">Integraciones API</button>
     </div>
 
-    <div class="bg-surface rounded-xl border border-white/5 overflow-hidden">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-white/5">
-            <th class="text-left px-6 py-3 text-slate-400 font-medium">Job</th>
-            <th class="text-left px-6 py-3 text-slate-400 font-medium">Inicio</th>
-            <th class="text-left px-6 py-3 text-slate-400 font-medium">Duración</th>
-            <th class="text-left px-6 py-3 text-slate-400 font-medium">Leídos</th>
-            <th class="text-left px-6 py-3 text-slate-400 font-medium">Enviados</th>
-            <th class="text-left px-6 py-3 text-slate-400 font-medium">Estado</th>
-            <th class="text-left px-6 py-3 text-slate-400 font-medium">HTTP</th>
-          </tr>
-        </thead>
-        <tbody id="logs-tbody">
-          <tr><td colspan="7" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
-        </tbody>
-      </table>
+    <!-- ===== PANEL EJECUCIONES ===== -->
+    <div id="panel-exec">
+      <div class="bg-surface rounded-xl border border-white/5 p-4 mb-4 flex items-center gap-3 flex-wrap">
+        <select id="ef-status" onchange="loadExec()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+          <option value="">Todos los estados</option>
+          <option value="success">Exitoso</option>
+          <option value="error">Error</option>
+          <option value="partial">Parcial</option>
+          <option value="running">Ejecutando</option>
+        </select>
+        <input id="ef-job" type="text" placeholder="Buscar job..." oninput="debounce(loadExec)" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent w-44">
+        <input id="ef-date-from" type="date" onchange="loadExec()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+        <input id="ef-date-to" type="date" onchange="loadExec()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+        <button onclick="clearExecFilters()" class="text-sm text-slate-400 hover:text-white ml-auto">Limpiar</button>
+        <button onclick="cleanupExec()" class="px-3 py-1.5 border border-white/10 text-slate-400 hover:text-white rounded-lg text-sm">Limpiar antiguos</button>
+      </div>
+      <div class="bg-surface rounded-xl border border-white/5 overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-white/5">
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">Job</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">Inicio</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">Duración</th>
+              <th class="text-right px-5 py-3 text-slate-400 font-medium">Leídos</th>
+              <th class="text-right px-5 py-3 text-slate-400 font-medium">Creados</th>
+              <th class="text-right px-5 py-3 text-slate-400 font-medium">Actlzds</th>
+              <th class="text-right px-5 py-3 text-slate-400 font-medium">Elims</th>
+              <th class="text-right px-5 py-3 text-slate-400 font-medium">Fallidos</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">Estado</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">HTTP</th>
+            </tr>
+          </thead>
+          <tbody id="exec-tbody">
+            <tr><td colspan="10" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="exec-pagination" class="flex items-center justify-between mt-4 text-sm text-slate-400"></div>
     </div>
 
-    <div id="pagination" class="flex items-center justify-between mt-4 text-sm text-slate-400"></div>
+    <!-- ===== PANEL INTEGRACIONES ===== -->
+    <div id="panel-int" class="hidden">
+      <div class="bg-surface rounded-xl border border-white/5 p-4 mb-4 flex items-center gap-3 flex-wrap">
+        <select id="if-outcome" onchange="loadInt()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+          <option value="">Todos los resultados</option>
+          <option value="success">Éxito</option>
+          <option value="error">Error</option>
+        </select>
+        <input id="if-search" type="text" placeholder="Job, API, URL..." oninput="debounce(loadInt)" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent w-52">
+        <input id="if-date-from" type="date" onchange="loadInt()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+        <input id="if-date-to" type="date" onchange="loadInt()" class="px-3 py-1.5 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+        <button onclick="clearIntFilters()" class="text-sm text-slate-400 hover:text-white ml-auto">Limpiar</button>
+        <button onclick="cleanupInt()" class="px-3 py-1.5 border border-white/10 text-slate-400 hover:text-white rounded-lg text-sm">Limpiar antiguos</button>
+      </div>
+      <div class="bg-surface rounded-xl border border-white/5 overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-white/5">
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">Job</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">API Config</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">Método</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">URL</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">Fecha</th>
+              <th class="text-right px-5 py-3 text-slate-400 font-medium">ms</th>
+              <th class="text-right px-5 py-3 text-slate-400 font-medium">Req</th>
+              <th class="text-right px-5 py-3 text-slate-400 font-medium">Res</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">HTTP</th>
+              <th class="text-left px-5 py-3 text-slate-400 font-medium">Resultado</th>
+            </tr>
+          </thead>
+          <tbody id="int-tbody">
+            <tr><td colspan="10" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="int-pagination" class="flex items-center justify-between mt-4 text-sm text-slate-400"></div>
+    </div>
   </main>
 
-  <!-- Modal detalle -->
-  <div id="detail-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+  <!-- Modal detalle ejecución -->
+  <div id="exec-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
     <div class="bg-surface rounded-2xl w-full max-w-2xl border border-white/10 shadow-2xl max-h-[90vh] flex flex-col">
       <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between flex-shrink-0">
         <h2 class="font-medium text-white">Detalle de ejecución</h2>
-        <button onclick="document.getElementById('detail-modal').classList.add('hidden')" class="text-slate-400 hover:text-white text-xl">&times;</button>
+        <button onclick="document.getElementById('exec-modal').classList.add('hidden')" class="text-slate-400 hover:text-white text-xl">&times;</button>
       </div>
-      <div id="detail-content" class="px-6 py-4 overflow-y-auto text-sm font-mono text-slate-300 space-y-2"></div>
+      <div id="exec-detail" class="px-6 py-4 overflow-y-auto text-sm font-mono text-slate-300 space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Modal detalle integración -->
+  <div id="int-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+    <div class="bg-surface rounded-2xl w-full max-w-3xl border border-white/10 shadow-2xl max-h-[90vh] flex flex-col">
+      <div class="px-6 py-4 border-b border-white/5 flex items-center justify-between flex-shrink-0">
+        <h2 class="font-medium text-white">Detalle de integración</h2>
+        <button onclick="document.getElementById('int-modal').classList.add('hidden')" class="text-slate-400 hover:text-white text-xl">&times;</button>
+      </div>
+      <div id="int-detail" class="px-6 py-4 overflow-y-auto text-sm text-slate-300 space-y-4"></div>
     </div>
   </div>
 
@@ -70,22 +140,69 @@
     AUTH.requireAuth();
     UI.buildNav();
 
-    let currentPage = 1;
-    const perPage = 25;
+    let execPage = 1, intPage = 1;
+    const PER_PAGE = 25;
+    let debounceTimer = null;
 
-    function duration(s, e) {
-      if (!e) return '—';
-      const ms = new Date(e) - new Date(s);
-      if (ms < 1000) return ms + 'ms';
-      return (ms/1000).toFixed(1) + 's';
+    function debounce(fn) {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => fn(), 400);
     }
 
-    async function load(page = currentPage) {
-      currentPage = page;
-      const status = document.getElementById('f-status').value;
-      const from = document.getElementById('f-date-from').value;
-      const to = document.getElementById('f-date-to').value;
-      let qs = `?page=${page}&per_page=${perPage}`;
+    function switchTab(tab) {
+      const isExec = tab === 'exec';
+      document.getElementById('panel-exec').classList.toggle('hidden', !isExec);
+      document.getElementById('panel-int').classList.toggle('hidden', isExec);
+      document.getElementById('tab-exec').className = 'pb-3 text-sm font-medium ' + (isExec ? 'tab-active' : 'tab-inactive');
+      document.getElementById('tab-int').className = 'pb-3 text-sm font-medium ' + (!isExec ? 'tab-active' : 'tab-inactive');
+      if (!isExec && intPage === 1) loadInt();
+    }
+
+    function dur(s, e) {
+      if (!e) return '—';
+      const ms = new Date(e) - new Date(s);
+      return ms < 1000 ? ms + 'ms' : (ms / 1000).toFixed(1) + 's';
+    }
+
+    function fmtBytes(b) {
+      if (!b) return '—';
+      return b < 1024 ? b + 'B' : (b / 1024).toFixed(1) + 'KB';
+    }
+
+    function statusBadge(s) {
+      const map = { success: ['badge-success', 'Exitoso'], error: ['badge-error', 'Error'], partial: ['badge-partial', 'Parcial'], running: ['badge-running', 'Ejecutando'] };
+      const [cls, label] = map[s] || ['badge-running', s];
+      return `<span class="px-2 py-0.5 rounded text-xs font-medium ${cls}">${label}</span>`;
+    }
+
+    function outcomeBadge(o) {
+      return o === 'success'
+        ? '<span class="px-2 py-0.5 rounded text-xs font-medium badge-ok">Éxito</span>'
+        : '<span class="px-2 py-0.5 rounded text-xs font-medium badge-fail">Error</span>';
+    }
+
+    function httpBadge(code) {
+      if (!code) return '<span class="text-slate-500">—</span>';
+      const cls = code < 300 ? 'text-emerald-400' : code < 500 ? 'text-yellow-400' : 'text-red-400';
+      return `<span class="${cls} font-mono">${code}</span>`;
+    }
+
+    function truncateUrl(url) {
+      try {
+        const u = new URL(url);
+        const path = u.pathname.length > 30 ? '…' + u.pathname.slice(-28) : u.pathname;
+        return `<span class="text-slate-500">${u.hostname}</span>${path}`;
+      } catch { return url.slice(0, 50); }
+    }
+
+    // ===== EJECUCIONES =====
+
+    async function loadExec(page = execPage) {
+      execPage = page;
+      const status = document.getElementById('ef-status').value;
+      const from = document.getElementById('ef-date-from').value;
+      const to = document.getElementById('ef-date-to').value;
+      let qs = `?page=${page}&per_page=${PER_PAGE}`;
       if (status) qs += `&status=${status}`;
       if (from) qs += `&date_from=${from}T00:00:00.000Z`;
       if (to) qs += `&date_to=${to}T23:59:59.999Z`;
@@ -94,110 +211,202 @@
         const res = await API.get('/logs' + qs);
         const logs = res.data || [];
         const total = res.total || 0;
-        const tbody = document.getElementById('logs-tbody');
+        const tbody = document.getElementById('exec-tbody');
 
-        if (logs.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-slate-500">Sin registros</td></tr>';
+        if (!logs.length) {
+          tbody.innerHTML = '<tr><td colspan="10" class="px-6 py-8 text-center text-slate-500">Sin registros</td></tr>';
         } else {
           tbody.innerHTML = logs.map(l => `
-            <tr onclick="showDetail('${l.id}')" class="border-b border-white/5 hover:bg-white/2 cursor-pointer">
-              <td class="px-6 py-3 text-white">${l.job_name}</td>
-              <td class="px-6 py-3 text-slate-400 font-mono text-xs">${UI.formatDate(l.started_at)}</td>
-              <td class="px-6 py-3 text-slate-400 font-mono text-xs">${duration(l.started_at, l.finished_at)}</td>
-              <td class="px-6 py-3 text-slate-400 font-mono">${l.records_read}</td>
-              <td class="px-6 py-3 text-slate-400 font-mono">${l.records_sent}</td>
-              <td class="px-6 py-3">${UI.statusBadge(l.status)}</td>
-              <td class="px-6 py-3 text-slate-400 font-mono text-xs">${l.http_status||'—'}</td>
+            <tr onclick="showExecDetail('${l.id}')" class="border-b border-white/5 hover:bg-white/[0.02] cursor-pointer">
+              <td class="px-5 py-3 text-white max-w-[160px] truncate">${l.job_name}</td>
+              <td class="px-5 py-3 text-slate-400 font-mono text-xs whitespace-nowrap">${UI.formatDate(l.started_at)}</td>
+              <td class="px-5 py-3 text-slate-400 font-mono text-xs">${dur(l.started_at, l.finished_at)}</td>
+              <td class="px-5 py-3 text-slate-400 font-mono text-right">${l.records_read ?? 0}</td>
+              <td class="px-5 py-3 text-emerald-400 font-mono text-right">${l.records_created ?? 0}</td>
+              <td class="px-5 py-3 text-blue-400 font-mono text-right">${l.records_updated ?? 0}</td>
+              <td class="px-5 py-3 text-red-400 font-mono text-right">${l.records_deleted ?? 0}</td>
+              <td class="px-5 py-3 text-orange-400 font-mono text-right">${l.records_failed ?? 0}</td>
+              <td class="px-5 py-3">${statusBadge(l.status)}</td>
+              <td class="px-5 py-3">${httpBadge(l.http_status)}</td>
             </tr>
           `).join('');
         }
 
-        const totalPages = Math.ceil(total / perPage);
-        const pag = document.getElementById('pagination');
-        if (totalPages <= 1) { pag.innerHTML = ''; return; }
-        pag.innerHTML = `
-          <span>${total} registros — Página ${page} de ${totalPages}</span>
-          <div class="flex gap-2">
-            ${page > 1 ? `<button onclick="load(${page-1})" class="px-3 py-1 rounded border border-white/10 hover:bg-white/5">← Anterior</button>` : ''}
-            ${page < totalPages ? `<button onclick="load(${page+1})" class="px-3 py-1 rounded border border-white/10 hover:bg-white/5">Siguiente →</button>` : ''}
-          </div>
-        `;
+        renderPagination('exec-pagination', total, page, PER_PAGE, loadExec);
       } catch (err) { console.error(err); }
     }
 
-    async function showDetail(id) {
+    async function showExecDetail(id) {
       try {
         const res = await API.get(`/logs/${id}`);
         const l = res.data;
-        const hasOpStats = l.records_created != null || l.records_updated != null || l.records_deleted != null || l.records_skipped != null;
-        document.getElementById('detail-content').innerHTML = `
-          <div><span class="text-slate-500">Job:</span> ${l.job_name}</div>
-          <div><span class="text-slate-500">Estado:</span> ${l.status}</div>
-          <div><span class="text-slate-500">Inicio:</span> ${l.started_at}</div>
-          <div><span class="text-slate-500">Fin:</span> ${l.finished_at||'—'}</div>
-          <div class="mt-3 mb-1 text-slate-500 text-xs uppercase tracking-wide">Registros</div>
-          <div class="grid grid-cols-3 gap-2 mb-1">
-            <div class="bg-base rounded-lg p-2 border border-white/5 text-center">
-              <div class="text-lg font-semibold text-white font-mono">${l.records_read ?? 0}</div>
-              <div class="text-xs text-slate-500">leídos</div>
-            </div>
-            <div class="bg-base rounded-lg p-2 border border-white/5 text-center">
-              <div class="text-lg font-semibold text-accent font-mono">${l.records_sent ?? 0}</div>
-              <div class="text-xs text-slate-500">enviados</div>
-            </div>
-            <div class="bg-base rounded-lg p-2 border border-white/5 text-center">
-              <div class="text-lg font-semibold text-red-400 font-mono">${l.records_failed ?? 0}</div>
-              <div class="text-xs text-slate-500">fallidos</div>
-            </div>
-          </div>
-          ${hasOpStats ? `
-          <div class="grid grid-cols-4 gap-2 mt-2">
-            <div class="bg-base rounded-lg p-2 border border-emerald-500/10 text-center">
-              <div class="text-base font-semibold text-emerald-400 font-mono">${l.records_created ?? 0}</div>
-              <div class="text-xs text-slate-500">creados</div>
-            </div>
-            <div class="bg-base rounded-lg p-2 border border-blue-500/10 text-center">
-              <div class="text-base font-semibold text-blue-400 font-mono">${l.records_updated ?? 0}</div>
-              <div class="text-xs text-slate-500">actualizados</div>
-            </div>
-            <div class="bg-base rounded-lg p-2 border border-red-500/10 text-center">
-              <div class="text-base font-semibold text-red-400 font-mono">${l.records_deleted ?? 0}</div>
-              <div class="text-xs text-slate-500">eliminados</div>
-            </div>
-            <div class="bg-base rounded-lg p-2 border border-white/5 text-center">
-              <div class="text-base font-semibold text-slate-400 font-mono">${l.records_skipped ?? 0}</div>
-              <div class="text-xs text-slate-500">sin cambios</div>
-            </div>
-          </div>` : ''}
-          <div class="mt-3 flex gap-4">
-            <div><span class="text-slate-500">HTTP:</span> ${l.http_status||'—'}</div>
+        document.getElementById('exec-detail').innerHTML = `
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div><span class="text-slate-500">Job:</span> <span class="text-white">${l.job_name}</span></div>
+            <div><span class="text-slate-500">Estado:</span> ${statusBadge(l.status)}</div>
+            <div><span class="text-slate-500">Inicio:</span> ${UI.formatDate(l.started_at)}</div>
+            <div><span class="text-slate-500">Duración:</span> ${dur(l.started_at, l.finished_at)}</div>
+            <div><span class="text-slate-500">HTTP:</span> ${httpBadge(l.http_status)}</div>
             <div><span class="text-slate-500">Reintentos:</span> ${l.retry_count}</div>
           </div>
-          ${l.error_message ? `<div class="mt-3 p-3 bg-red-900/20 rounded text-red-300"><span class="text-slate-500">Error:</span> ${l.error_message}</div>` : ''}
-          ${l.details_json ? `<div class="mt-3"><span class="text-slate-500">Detalles:</span><pre class="mt-1 text-xs overflow-x-auto">${JSON.stringify(l.details_json, null, 2)}</pre></div>` : ''}
+          <div class="mt-3 grid grid-cols-4 gap-2">
+            ${statCard(l.records_read ?? 0, 'Leídos', 'text-white')}
+            ${statCard(l.records_created ?? 0, 'Creados', 'text-emerald-400')}
+            ${statCard(l.records_updated ?? 0, 'Actualizados', 'text-blue-400')}
+            ${statCard(l.records_deleted ?? 0, 'Eliminados', 'text-red-400')}
+            ${statCard(l.records_skipped ?? 0, 'Sin cambios', 'text-slate-400')}
+            ${statCard(l.records_sent ?? 0, 'Enviados', 'text-accent')}
+            ${statCard(l.records_failed ?? 0, 'Fallidos', 'text-orange-400')}
+          </div>
+          ${l.error_message ? `<div class="mt-3 p-3 bg-red-900/20 rounded border border-red-900/30 text-red-300 text-xs">${l.error_message}</div>` : ''}
+          ${l.details_json ? `
+            <div class="mt-3">
+              <div class="text-xs text-slate-500 mb-1 uppercase tracking-wide">Respuesta API</div>
+              <pre class="bg-base rounded-lg p-3 text-xs border border-white/5 text-emerald-300 overflow-x-auto">${JSON.stringify(l.details_json, null, 2)}</pre>
+            </div>` : ''}
         `;
-        document.getElementById('detail-modal').classList.remove('hidden');
+        document.getElementById('exec-modal').classList.remove('hidden');
       } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
     }
 
-    async function cleanup() {
-      const days = prompt('Eliminar logs anteriores a cuántos días?', '30');
+    function clearExecFilters() {
+      ['ef-status', 'ef-job', 'ef-date-from', 'ef-date-to'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el.tagName === 'SELECT') el.value = ''; else el.value = '';
+      });
+      loadExec(1);
+    }
+
+    async function cleanupExec() {
+      const days = prompt('Eliminar ejecuciones anteriores a cuántos días?', '30');
       if (!days) return;
       try {
         const res = await API.delete(`/logs/cleanup?days=${days}`);
         UI.toast(`${res.data.deleted} registros eliminados`);
-        load();
+        loadExec(1);
       } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
     }
 
-    function clearFilters() {
-      document.getElementById('f-status').value = '';
-      document.getElementById('f-date-from').value = '';
-      document.getElementById('f-date-to').value = '';
-      load(1);
+    // ===== INTEGRACIONES =====
+
+    async function loadInt(page = intPage) {
+      intPage = page;
+      const outcome = document.getElementById('if-outcome').value;
+      const search = document.getElementById('if-search').value;
+      const from = document.getElementById('if-date-from').value;
+      const to = document.getElementById('if-date-to').value;
+      let qs = `?page=${page}&per_page=${PER_PAGE}`;
+      if (outcome) qs += `&outcome=${outcome}`;
+      if (search) qs += `&search=${encodeURIComponent(search)}`;
+      if (from) qs += `&date_from=${from}T00:00:00.000Z`;
+      if (to) qs += `&date_to=${to}T23:59:59.999Z`;
+
+      try {
+        const res = await API.get('/logs/integrations/list' + qs);
+        const logs = res.data || [];
+        const total = res.total || 0;
+        const tbody = document.getElementById('int-tbody');
+
+        if (!logs.length) {
+          tbody.innerHTML = '<tr><td colspan="10" class="px-6 py-8 text-center text-slate-500">Sin registros de integración</td></tr>';
+        } else {
+          tbody.innerHTML = logs.map(l => `
+            <tr onclick="showIntDetail('${l.id}')" class="border-b border-white/5 hover:bg-white/[0.02] cursor-pointer">
+              <td class="px-5 py-3 text-white max-w-[130px] truncate">${l.job_name}</td>
+              <td class="px-5 py-3 text-slate-400 text-xs max-w-[120px] truncate">${l.api_config_name || '—'}</td>
+              <td class="px-5 py-3 font-mono text-xs text-blue-300">${l.method}</td>
+              <td class="px-5 py-3 font-mono text-xs text-slate-400 max-w-[200px] truncate">${truncateUrl(l.url)}</td>
+              <td class="px-5 py-3 text-slate-400 font-mono text-xs whitespace-nowrap">${UI.formatDate(l.created_at)}</td>
+              <td class="px-5 py-3 text-slate-400 font-mono text-xs text-right">${l.duration_ms ?? '—'}</td>
+              <td class="px-5 py-3 text-slate-500 font-mono text-xs text-right">${fmtBytes(l.request_bytes)}</td>
+              <td class="px-5 py-3 text-slate-500 font-mono text-xs text-right">${fmtBytes(l.response_bytes)}</td>
+              <td class="px-5 py-3">${httpBadge(l.response_status)}</td>
+              <td class="px-5 py-3">${outcomeBadge(l.outcome)}</td>
+            </tr>
+          `).join('');
+        }
+
+        renderPagination('int-pagination', total, page, PER_PAGE, loadInt);
+      } catch (err) { console.error(err); }
     }
 
-    load();
+    async function showIntDetail(id) {
+      try {
+        const res = await API.get(`/logs/integrations/${id}`);
+        const l = res.data;
+        document.getElementById('int-detail').innerHTML = `
+          <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+            <div><span class="text-slate-500">Job:</span> <span class="text-white">${l.job_name}</span></div>
+            <div><span class="text-slate-500">API Config:</span> <span class="text-white">${l.api_config_name || '—'}</span></div>
+            <div><span class="text-slate-500">Auth:</span> <span class="text-slate-300">${l.auth_type || '—'}</span></div>
+            <div><span class="text-slate-500">Fecha:</span> <span class="text-slate-300">${UI.formatDate(l.created_at)}</span></div>
+            <div><span class="text-slate-500">Método:</span> <span class="font-mono text-blue-300">${l.method}</span></div>
+            <div><span class="text-slate-500">HTTP:</span> ${httpBadge(l.response_status)}</div>
+            <div><span class="text-slate-500">Duración:</span> <span class="font-mono text-white">${l.duration_ms ?? '—'}ms</span></div>
+            <div><span class="text-slate-500">Intento:</span> <span class="font-mono text-white">${l.attempt}</span></div>
+            <div class="col-span-2"><span class="text-slate-500">URL:</span> <span class="font-mono text-slate-300 break-all">${l.url}</span></div>
+          </div>
+          ${l.error_message ? `<div class="p-3 bg-red-900/20 rounded border border-red-900/30 text-red-300 text-xs">${l.error_message}</div>` : ''}
+          <div>
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-2 flex items-center justify-between">
+              <span>Payload enviado</span>
+              <span class="font-mono">${fmtBytes(l.request_bytes)}</span>
+            </div>
+            <pre class="bg-base rounded-lg p-3 text-xs border border-white/5 text-blue-200 overflow-x-auto max-h-64">${l.request_payload ? JSON.stringify(l.request_payload, null, 2) : '<span class="text-slate-600">vacío</span>'}</pre>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 uppercase tracking-wide mb-2 flex items-center justify-between">
+              <span>Respuesta recibida</span>
+              <span class="font-mono">${fmtBytes(l.response_bytes)}</span>
+            </div>
+            <pre class="bg-base rounded-lg p-3 text-xs border border-white/5 text-emerald-300 overflow-x-auto max-h-64">${l.response_body ? JSON.stringify(l.response_body, null, 2) : '<span class="text-slate-600">sin respuesta</span>'}</pre>
+          </div>
+        `;
+        document.getElementById('int-modal').classList.remove('hidden');
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    function clearIntFilters() {
+      ['if-outcome', 'if-search', 'if-date-from', 'if-date-to'].forEach(id => {
+        const el = document.getElementById(id);
+        el.value = '';
+      });
+      loadInt(1);
+    }
+
+    async function cleanupInt() {
+      const days = prompt('Eliminar integraciones anteriores a cuántos días?', '90');
+      if (!days) return;
+      try {
+        const res = await API.delete(`/logs/integrations/cleanup?days=${days}`);
+        UI.toast(`${res.data.deleted} registros eliminados`);
+        loadInt(1);
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    // ===== HELPERS =====
+
+    function statCard(val, label, colorClass) {
+      return `<div class="bg-base rounded-lg p-2 border border-white/5 text-center">
+        <div class="text-base font-semibold ${colorClass} font-mono">${val}</div>
+        <div class="text-xs text-slate-500">${label}</div>
+      </div>`;
+    }
+
+    function renderPagination(containerId, total, page, perPage, loadFn) {
+      const totalPages = Math.ceil(total / perPage);
+      const el = document.getElementById(containerId);
+      if (totalPages <= 1) { el.innerHTML = `<span>${total} registros</span>`; return; }
+      el.innerHTML = `
+        <span>${total} registros — Página ${page} de ${totalPages}</span>
+        <div class="flex gap-2">
+          ${page > 1 ? `<button onclick="${loadFn.name}(${page - 1})" class="px-3 py-1 rounded border border-white/10 hover:bg-white/5">← Anterior</button>` : ''}
+          ${page < totalPages ? `<button onclick="${loadFn.name}(${page + 1})" class="px-3 py-1 rounded border border-white/10 hover:bg-white/5">Siguiente →</button>` : ''}
+        </div>
+      `;
+    }
+
+    loadExec();
   </script>
 </body>
 </html>

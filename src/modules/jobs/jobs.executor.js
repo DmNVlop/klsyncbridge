@@ -245,6 +245,18 @@ async function executeJob(jobId) {
         data: hasChanges ? apiPayload : [],
       };
 
+      logger.info(`Job "${job.name}" - payload construido`, {
+        job_id: jobId,
+        log_id: logId,
+        url: requestConfig.url,
+        method: requestConfig.method,
+        items_total: itemsToProcess.length,
+        items_created: recordsCreated,
+        items_updated: recordsUpdated,
+        items_deleted: recordsDeleted,
+        payload_preview: apiPayload.slice(0, 3),
+      });
+
       const onTokenExpired = apiConfig.auth_type === 'login'
         ? async () => {
           const { resolveAuth: ra } = require('../../services/auth-resolver.service');
@@ -253,9 +265,54 @@ async function executeJob(jobId) {
         }
         : null;
 
-      const response = await requestWithRetry(requestConfig, { onTokenExpired });
-      httpStatus = response.status;
-      finalStatus = 'success';
+      const integrationStart = Date.now();
+      let integrationOutcome = 'success';
+      let integrationError = null;
+      let integrationResponse = null;
+      let integrationStatus = null;
+
+      try {
+        integrationResponse = await requestWithRetry(requestConfig, { onTokenExpired });
+        integrationStatus = integrationResponse.status;
+        httpStatus = integrationResponse.status;
+        finalStatus = 'success';
+      } catch (httpErr) {
+        integrationOutcome = 'error';
+        integrationError = httpErr.message;
+        integrationStatus = httpErr.originalError?.response?.status || null;
+        throw httpErr;
+      } finally {
+        const integrationDuration = Date.now() - integrationStart;
+        const requestPayloadStr = JSON.stringify(requestConfig.data);
+        const responseBodyStr = integrationResponse?.data ? JSON.stringify(integrationResponse.data) : null;
+        db.prepare(`
+          INSERT INTO integration_logs
+            (id, execution_log_id, job_id, job_name, api_config_id, api_config_name,
+             method, url, auth_type, request_payload, request_bytes,
+             response_status, response_body, response_bytes,
+             duration_ms, attempt, outcome, error_message, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+        `).run(
+          crypto.randomUUID(), logId, jobId, job.name,
+          apiConfig.id, apiConfig.name,
+          requestConfig.method?.toUpperCase(), requestConfig.url,
+          apiConfig.auth_type,
+          requestPayloadStr, Buffer.byteLength(requestPayloadStr || ''),
+          integrationStatus,
+          responseBodyStr, responseBodyStr ? Buffer.byteLength(responseBodyStr) : 0,
+          integrationDuration, integrationOutcome, integrationError,
+          new Date().toISOString()
+        );
+      }
+
+      const response = integrationResponse;
+
+      logger.info(`Job "${job.name}" - response recibida`, {
+        job_id: jobId,
+        log_id: logId,
+        http_status: response.status,
+        response_body: response.data,
+      });
 
       // Parsear respuesta de ArdisApp si tiene stats
       if (response.data && typeof response.data === 'object') {

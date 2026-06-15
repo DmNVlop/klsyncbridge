@@ -51,6 +51,17 @@ async function main() {
   await initScheduler();
   logger.info('Scheduler iniciado');
 
+  // Cleanup automático de integration_logs al arrancar (TTL 90 días por defecto)
+  try {
+    const { runScheduledCleanup } = require('./modules/logs/logs.service');
+    const cleanupResult = runScheduledCleanup();
+    if (cleanupResult.deleted > 0) {
+      logger.info('Cleanup integration_logs completado', { deleted: cleanupResult.deleted });
+    }
+  } catch (cleanupErr) {
+    logger.warn('Error en cleanup de integration_logs', { error: cleanupErr.message });
+  }
+
   // Graceful shutdown — idempotente, una sola ejecución por proceso
   let shuttingDown = false;
   function shutdown(signal) {

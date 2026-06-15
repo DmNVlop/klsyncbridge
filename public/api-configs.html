@@ -66,6 +66,11 @@
           </select>
         </div>
         <div id="auth-fields"></div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Schema del payload (JSON de ejemplo, opcional)</label>
+          <textarea id="a-payload-schema" rows="6" class="inp font-mono text-xs" placeholder='{"reference":"ABC123","description":"Ejemplo","attributes":{"price":100,"unit":"m2"},"status":"active"}'></textarea>
+          <p id="schema-error" class="hidden text-xs text-red-400 mt-1">JSON inválido</p>
+        </div>
         <div id="test-result" class="hidden p-3 rounded-lg text-sm font-mono"></div>
         <div class="flex items-center gap-3 pt-2">
           <button type="button" onclick="testApi()" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white text-sm">Probar</button>
@@ -158,6 +163,22 @@
       return null;
     }
 
+    function getPayloadSchema() {
+      const raw = document.getElementById('a-payload-schema').value.trim();
+      const errEl = document.getElementById('schema-error');
+      if (!raw) { errEl.classList.add('hidden'); return null; }
+      try {
+        const parsed = JSON.parse(raw);
+        errEl.classList.add('hidden');
+        return parsed;
+      } catch {
+        errEl.classList.remove('hidden');
+        return undefined;
+      }
+    }
+
+    document.getElementById('a-payload-schema').addEventListener('input', () => getPayloadSchema());
+
     function getFormData() {
       return {
         name: document.getElementById('a-name').value.trim(),
@@ -166,6 +187,7 @@
         endpoint_path: document.getElementById('a-path').value.trim(),
         auth_type: document.getElementById('a-auth-type').value,
         auth_config: getAuthConfig(),
+        payload_schema: getPayloadSchema() ?? null,
       };
     }
 
@@ -178,6 +200,8 @@
       document.getElementById('a-method').value = 'POST';
       document.getElementById('a-path').value = '';
       document.getElementById('a-auth-type').value = 'none';
+      document.getElementById('a-payload-schema').value = '';
+      document.getElementById('schema-error').classList.add('hidden');
       renderAuthFields();
       document.getElementById('test-result').classList.add('hidden');
       document.getElementById('modal').classList.remove('hidden');
@@ -194,6 +218,8 @@
       document.getElementById('a-method').value = c.method;
       document.getElementById('a-path').value = c.endpoint_path;
       document.getElementById('a-auth-type').value = c.auth_type;
+      document.getElementById('a-payload-schema').value = c.payload_schema ? JSON.stringify(c.payload_schema, null, 2) : '';
+      document.getElementById('schema-error').classList.add('hidden');
       renderAuthFields();
       document.getElementById('test-result').classList.add('hidden');
       document.getElementById('modal').classList.remove('hidden');
@@ -225,6 +251,8 @@
 
     document.getElementById('api-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const schema = getPayloadSchema();
+      if (schema === undefined) { UI.toast('El schema JSON no es válido', 'error'); return; }
       const data = getFormData();
       try {
         if (editingId) await API.put(`/api-configs/${editingId}`, data);

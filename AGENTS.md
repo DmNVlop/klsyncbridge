@@ -21,6 +21,29 @@ node scripts/setup.js
 npm start
 ```
 
+### Gestión de Releases (Auto-update)
+
+Para que el mecanismo de actualización automática funcione en los clientes, se deben incrementar simultáneamente `package.json` y `version.json` y crear un Git Tag antes de subir a GitHub:
+
+```bash
+# Ejecutar release interactivo
+npm run release
+
+# O especificar incremento (patch, minor, major) con changelog
+npm run release -- patch --changelog "Corrección de errores menores"
+```
+
+Opciones útiles del script `scripts/release.js`:
+- `--dry-run`: Simula los cambios sin escribir en disco ni git.
+- `--allow-dirty`: Permite continuar incluso si hay cambios locales sin commit.
+- `--allow-any-branch`: Permite release desde ramas distintas a `main`.
+- `--no-tag` / `--no-commit`: Evita crear el tag o el commit en git.
+- `-y` / `--yes`: Acepta por defecto sin confirmaciones.
+
+Una vez finalizado, empuja los cambios y tags a GitHub:
+`git push origin main --tags`
+(Nota: El repositorio debe ser público para que los clientes descarguen el zip sin credenciales).
+
 ### Rutas API disponibles
 
 ```

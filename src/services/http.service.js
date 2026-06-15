@@ -41,25 +41,61 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function summarizeBody(data) {
+  if (data === null || data === undefined) return null;
+  if (Array.isArray(data)) return { _type: 'array', count: data.length, sample: data.slice(0, 2) };
+  if (typeof data === 'object') return data;
+  return String(data).slice(0, 500);
+}
+
+function byteSize(data) {
+  if (!data) return 0;
+  try { return Buffer.byteLength(typeof data === 'string' ? data : JSON.stringify(data)); } catch { return -1; }
+}
+
 async function requestWithRetry(config, { onTokenExpired } = {}) {
   let attempt = 0;
   const startTime = Date.now();
 
   while (true) {
     attempt++;
+    const attemptStart = Date.now();
+
+    logger.info('API request enviado', {
+      method: config.method?.toUpperCase(),
+      url: config.url,
+      attempt,
+      payload_bytes: byteSize(config.data),
+      payload: summarizeBody(config.data),
+    });
+
     try {
       const response = await axios({ ...config, timeout: config.timeout || 30000 });
+      const duration_ms = Date.now() - attemptStart;
+
+      logger.info('API response recibida', {
+        method: config.method?.toUpperCase(),
+        url: config.url,
+        http_status: response.status,
+        duration_ms,
+        response_bytes: byteSize(response.data),
+        response: summarizeBody(response.data),
+      });
+
       return response;
     } catch (error) {
       const category = categorizeError(error);
       const status = error.response?.status;
+      const duration_ms = Date.now() - attemptStart;
 
       logger.warn('Request fallido', {
         attempt,
         category,
         http_status: status,
         url: config.url,
+        duration_ms,
         error: error.message,
+        response_body: error.response?.data ? summarizeBody(error.response.data) : undefined,
       });
 
       // 401 con auth tipo login: renovar token una vez

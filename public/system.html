@@ -39,6 +39,40 @@
       </div>
       <div id="service-raw" class="hidden mt-3 text-xs text-slate-600 font-mono whitespace-pre bg-base rounded-lg p-3 border border-white/5 leading-relaxed"></div>
       <button onclick="toggleRaw()" id="btn-raw" class="hidden mt-2 text-xs text-slate-600 hover:text-slate-400">Ver detalles técnicos</button>
+
+      <!-- Privilegios elevados -->
+      <div class="mt-4 pt-4 border-t border-white/5 flex items-center gap-2">
+        <div id="priv-dot" class="w-2 h-2 rounded-full bg-slate-600 animate-pulse flex-shrink-0"></div>
+        <span id="priv-text" class="text-xs text-slate-500 font-mono">Verificando privilegios...</span>
+      </div>
+    </div>
+
+    <!-- Control operativo: Iniciar / Detener -->
+    <div class="bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-1">Control del servicio</h2>
+      <p class="text-xs text-slate-500 mb-4">Inicia o detiene el servicio sin reinstalarlo. Disponible solo cuando el servicio está instalado.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="bg-base rounded-xl border border-white/5 p-4 flex flex-col gap-3">
+          <div>
+            <div class="text-sm font-medium text-white mb-1">Iniciar servicio</div>
+            <div class="text-xs text-slate-500">Ejecuta <span class="font-mono">sc start</span>. Solo disponible cuando el servicio está detenido.</div>
+          </div>
+          <button onclick="runServiceControl('start')" id="btn-start" disabled
+            class="mt-auto px-3 py-2 bg-emerald-900/40 hover:bg-emerald-900/60 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Iniciar
+          </button>
+        </div>
+        <div class="bg-base rounded-xl border border-white/5 p-4 flex flex-col gap-3">
+          <div>
+            <div class="text-sm font-medium text-white mb-1">Detener servicio</div>
+            <div class="text-xs text-slate-500">Ejecuta <span class="font-mono">sc stop</span>. Solo disponible cuando el servicio está en ejecución.</div>
+          </div>
+          <button onclick="runServiceControl('stop')" id="btn-stop" disabled
+            class="mt-auto px-3 py-2 bg-red-900/40 hover:bg-red-900/60 border border-red-500/30 text-red-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            Detener
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="bg-surface rounded-xl border border-white/5 p-6">
@@ -183,9 +217,35 @@
     } else {
       document.getElementById('main-content').classList.remove('hidden');
       loadStatus();
+      loadPrivilege();
     }
 
     let rawVisible = false;
+    let currentServiceState = null;
+
+    async function loadPrivilege() {
+      try {
+        const res = await API.get('/system/privilege');
+        renderPrivilege(res.data);
+      } catch {
+        document.getElementById('priv-dot').className = 'w-2 h-2 rounded-full bg-slate-500 flex-shrink-0';
+        document.getElementById('priv-text').textContent = 'No se pudo verificar privilegios';
+      }
+    }
+
+    function renderPrivilege(data) {
+      const dot  = document.getElementById('priv-dot');
+      const text = document.getElementById('priv-text');
+      if (data.isAdmin) {
+        dot.className  = 'w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0';
+        text.className = 'text-xs text-emerald-400 font-mono';
+        text.textContent = `Privilegios elevados — corriendo como Administrador (${data.username})`;
+      } else {
+        dot.className  = 'w-2 h-2 rounded-full bg-red-500 flex-shrink-0';
+        text.className = 'text-xs text-red-400 font-mono';
+        text.textContent = `Sin privilegios de Administrador (${data.username}) — las operaciones de servicio fallarán`;
+      }
+    }
 
     async function loadStatus() {
       const el = document.getElementById('service-status');
@@ -201,17 +261,24 @@
     }
 
     function renderStatus(data) {
-      const el = document.getElementById('service-status');
+      const el    = document.getElementById('service-status');
       const rawEl = document.getElementById('service-raw');
       const btnRaw = document.getElementById('btn-raw');
+      const btnStart = document.getElementById('btn-start');
+      const btnStop  = document.getElementById('btn-stop');
 
       if (!data.installed) {
+        currentServiceState = null;
         el.innerHTML = `
           <div class="w-2.5 h-2.5 rounded-full bg-slate-500"></div>
           <span class="text-slate-400 text-sm font-mono">No instalado</span>
           <span class="text-xs text-slate-600 ml-1">— El servicio Windows no está registrado</span>`;
+        btnStart.disabled = true;
+        btnStop.disabled  = true;
         return;
       }
+
+      currentServiceState = data.state;
 
       const stateMap = {
         RUNNING:       { dot: 'bg-emerald-500',              text: 'text-emerald-400', label: 'En ejecución' },
@@ -226,9 +293,53 @@
         <div class="w-2.5 h-2.5 rounded-full ${cfg.dot}"></div>
         <span class="${cfg.text} text-sm font-mono font-medium">${cfg.label}</span>`;
 
+      // Habilitar/deshabilitar botones Start/Stop según estado real
+      btnStart.disabled = data.state !== 'STOPPED';
+      btnStop.disabled  = data.state !== 'RUNNING';
+
       if (data.raw) {
         rawEl.textContent = data.raw;
         btnRaw.classList.remove('hidden');
+      }
+    }
+
+    async function runServiceControl(action) {
+      const labels  = { start: 'Iniciar servicio', stop: 'Detener servicio' };
+      const bodies  = {
+        start: '¿Iniciar el servicio Windows? Ejecuta sc start klsyncbridge.exe.',
+        stop:  '¿Detener el servicio Windows? Los jobs en ejecución se interrumpirán. Ejecuta sc stop klsyncbridge.exe.',
+      };
+      const okLabels = { start: 'Iniciar', stop: 'Detener' };
+      const okClasses = {
+        start: 'bg-emerald-700 hover:bg-emerald-600 text-white',
+        stop:  'bg-red-700 hover:bg-red-600 text-white',
+      };
+
+      const ok = await UI.confirmDialog(labels[action], bodies[action], okLabels[action], okClasses[action]);
+      if (!ok) return;
+
+      const btnStart = document.getElementById('btn-start');
+      const btnStop  = document.getElementById('btn-stop');
+      btnStart.disabled = true;
+      btnStop.disabled  = true;
+
+      const btn = document.getElementById(`btn-${action}`);
+      const origText = btn ? btn.textContent : '';
+      if (btn) btn.textContent = action === 'start' ? 'Iniciando...' : 'Deteniendo...';
+
+      appendLog(`\n▶ ${labels[action]}: ${new Date().toLocaleTimeString('es-AR')}\n${'─'.repeat(50)}\n`);
+
+      try {
+        const res = await API.post(`/system/${action}`);
+        appendLog((res.data?.raw ? res.data.raw + '\n' : '') + `\n✅ ${res.data?.message || 'Completado.'}\n`);
+        UI.toast(res.data?.message || `${labels[action]} completado`, 'success');
+        await loadStatus();
+      } catch (e) {
+        appendLog(`\n❌ Error: ${e.message}\n`);
+        UI.toast('Error: ' + e.message, 'error');
+        await loadStatus();
+      } finally {
+        if (btn) btn.textContent = origText;
       }
     }
 

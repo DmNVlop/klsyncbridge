@@ -67,6 +67,7 @@ npm start                    # Arrancar servidor
 npm run dev                  # Desarrollo con --watch
 node scripts/install-service.js    # Instalar como Windows Service
 node scripts/uninstall-service.js  # Desinstalar servicio
+npm run release              # Automatizar releases de actualización (bachea versión, logs y git tags)
 ```
 
 ## Reglas de Código OBLIGATORIAS

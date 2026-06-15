@@ -146,9 +146,35 @@ function createTables(db) {
       value  TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS integration_logs (
+      id              TEXT PRIMARY KEY,
+      execution_log_id TEXT REFERENCES execution_logs(id) ON DELETE CASCADE,
+      job_id          TEXT NOT NULL REFERENCES jobs(id),
+      job_name        TEXT NOT NULL,
+      api_config_id   TEXT,
+      api_config_name TEXT,
+      method          TEXT NOT NULL,
+      url             TEXT NOT NULL,
+      auth_type       TEXT,
+      request_payload TEXT,
+      request_bytes   INTEGER DEFAULT 0,
+      response_status INTEGER,
+      response_body   TEXT,
+      response_bytes  INTEGER DEFAULT 0,
+      duration_ms     INTEGER,
+      attempt         INTEGER DEFAULT 1,
+      outcome         TEXT NOT NULL,
+      error_message   TEXT,
+      created_at      TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_execution_logs_job_id ON execution_logs(job_id);
     CREATE INDEX IF NOT EXISTS idx_execution_logs_started_at ON execution_logs(started_at);
     CREATE INDEX IF NOT EXISTS idx_field_maps_job_id ON field_maps(job_id);
+    CREATE INDEX IF NOT EXISTS idx_integration_logs_job_id ON integration_logs(job_id);
+    CREATE INDEX IF NOT EXISTS idx_integration_logs_created_at ON integration_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_integration_logs_execution_log_id ON integration_logs(execution_log_id);
+    CREATE INDEX IF NOT EXISTS idx_integration_logs_outcome ON integration_logs(outcome);
   `);
 }
 
@@ -195,6 +221,19 @@ function runMigrations(db) {
       addColIfNotExists('execution_logs', 'records_updated', 'INTEGER DEFAULT 0');
       addColIfNotExists('execution_logs', 'records_deleted', 'INTEGER DEFAULT 0');
       addColIfNotExists('execution_logs', 'records_skipped', 'INTEGER DEFAULT 0');
+    },
+
+    // v3: schema de ejemplo del payload esperado por la API
+    () => {
+      const cols = db.prepare('PRAGMA table_info(api_configs)').all();
+      if (!cols.find(c => c.name === 'payload_schema')) {
+        db.prepare('ALTER TABLE api_configs ADD COLUMN payload_schema TEXT').run();
+      }
+    },
+
+    // v4: TTL para integration_logs (90 días por defecto)
+    () => {
+      db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('integration_log_retention_days', '90')").run();
     },
   ];
 

@@ -156,6 +156,13 @@
     <!-- Step 3 -->
     <div id="step-3" class="hidden bg-surface rounded-xl border border-white/5 p-6">
       <h2 class="font-medium text-white mb-5">Paso 3: Mapeo de campos</h2>
+
+      <!-- Schema panel -->
+      <div id="schema-panel" class="hidden mb-5 p-4 bg-base rounded-lg border border-white/5">
+        <p class="text-xs font-medium text-slate-400 mb-3">Schema del objeto API — click para mapear</p>
+        <div id="schema-fields" class="space-y-1"></div>
+      </div>
+
       <div class="overflow-x-auto">
         <table class="w-full text-sm mb-4">
           <thead>
@@ -216,7 +223,7 @@
   <script src="/js/auth.js"></script>
   <script>
     AUTH.requireAuth();
-    let currentStep = 1, editingId = null, sqlFields = [], fieldMaps = [];
+    let currentStep = 1, editingId = null, sqlFields = [], fieldMaps = [], apiConfigs = [];
 
     const params = new URLSearchParams(location.search);
     if (params.get('id')) {
@@ -237,8 +244,9 @@
       // Cargar APIs
       try {
         const r = await API.get('/api-configs');
+        apiConfigs = r.data || [];
         const sel = document.getElementById('j-api');
-        (r.data||[]).forEach(c => {
+        apiConfigs.forEach(c => {
           sel.innerHTML += `<option value="${c.id}">${c.name} — ${c.method} ${c.base_url}${c.endpoint_path}</option>`;
         });
       } catch(e){}
@@ -324,6 +332,49 @@
       document.getElementById('passthrough-field-row').classList.toggle('hidden', mode !== 'passthrough');
     }
 
+    function flattenSchema(obj, prefix) {
+      const fields = [];
+      for (const key of Object.keys(obj)) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        const val = obj[key];
+        if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+          fields.push(...flattenSchema(val, path));
+        } else {
+          fields.push({ path, type: Array.isArray(val) ? 'array' : typeof val });
+        }
+      }
+      return fields;
+    }
+
+    function renderSchemaPanel() {
+      const apiId = document.getElementById('j-api').value;
+      const config = apiConfigs.find(c => c.id === apiId);
+      const panel = document.getElementById('schema-panel');
+      const container = document.getElementById('schema-fields');
+
+      if (!config || !config.payload_schema) {
+        panel.classList.add('hidden');
+        return;
+      }
+
+      const fields = flattenSchema(config.payload_schema, '');
+      if (fields.length === 0) { panel.classList.add('hidden'); return; }
+
+      panel.classList.remove('hidden');
+      container.innerHTML = fields.map(f => `
+        <div class="flex items-center justify-between py-1 px-2 rounded hover:bg-white/5 group">
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-sm text-slate-200">${f.path}</span>
+            <span class="text-xs text-slate-500">${f.type}</span>
+          </div>
+          <button type="button" onclick="addMapRow(null,'${f.path}')"
+            class="text-xs text-accent hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity">
+            + Mapear
+          </button>
+        </div>
+      `).join('');
+    }
+
     function nextStep(n) {
       if (n > currentStep && !validateStep(currentStep)) return;
       document.getElementById(`step-${currentStep}`).classList.add('hidden');
@@ -332,7 +383,7 @@
       document.getElementById(`step-${currentStep}`).classList.remove('hidden');
       updateStepIndicator(currentStep, true);
       if (n === 3 && fieldMaps.length === 0) addMapRow();
-      if (n === 3) updateJsonPreview();
+      if (n === 3) { renderSchemaPanel(); updateJsonPreview(); }
     }
 
     function validateStep(step) {
@@ -364,7 +415,7 @@
       }
     }
 
-    function addMapRow(map=null) {
+    function addMapRow(map=null, prefilledApiField=null) {
       const opts = sqlFields.map(f=>`<option value="${f.name}">${f.name}</option>`).join('');
       const transforms = ['none','uppercase','lowercase','trim','number','boolean','date_iso','string'];
       const tOpts = transforms.map(t=>`<option value="${t}">${t}</option>`).join('');
@@ -382,10 +433,13 @@
         row.querySelector('.map-api').value = map.api;
         row.querySelector('.map-transform').value = map.transform;
         row.querySelector('.map-default').value = map.def;
+      } else if (prefilledApiField) {
+        row.querySelector('.map-api').value = prefilledApiField;
       }
       row.querySelectorAll('select,input').forEach(el => el.addEventListener('input', updateJsonPreview));
       document.getElementById('map-rows').appendChild(row);
       updateJsonPreview();
+      row.querySelector('.map-sql').focus();
     }
 
     function renderMapRows() {

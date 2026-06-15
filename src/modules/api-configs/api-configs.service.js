@@ -25,6 +25,7 @@ function serialize(row) {
     is_active: Boolean(row.is_active),
     headers_json: row.headers_json ? JSON.parse(row.headers_json) : null,
     auth_config: row.auth_config ? maskAuthConfig(decryptObject(row.auth_config)) : null,
+    payload_schema: row.payload_schema ? JSON.parse(row.payload_schema) : null,
   };
   return result;
 }
@@ -47,6 +48,7 @@ function getApiConfigRaw(id) {
   if (!row) throw new NotFoundError('Configuración de API');
   row.auth_config = row.auth_config ? decryptObject(row.auth_config) : null;
   row.headers_json = row.headers_json ? JSON.parse(row.headers_json) : null;
+  row.payload_schema = row.payload_schema ? JSON.parse(row.payload_schema) : null;
   return row;
 }
 
@@ -55,14 +57,15 @@ function createApiConfig(data) {
   const id = crypto.randomUUID();
   const n = now();
   db.prepare(`
-    INSERT INTO api_configs (id, name, base_url, endpoint_path, method, headers_json, body_template, auth_type, auth_config, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    INSERT INTO api_configs (id, name, base_url, endpoint_path, method, headers_json, body_template, auth_type, auth_config, payload_schema, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
   `).run(
     id, data.name, data.base_url, data.endpoint_path, data.method,
     data.headers_json ? JSON.stringify(data.headers_json) : null,
     data.body_template || null,
     data.auth_type,
     data.auth_config ? encryptObject(data.auth_config) : null,
+    data.payload_schema ? JSON.stringify(data.payload_schema) : null,
     n, n
   );
   return getApiConfig(id);
@@ -82,6 +85,7 @@ function updateApiConfig(id, data) {
   if (data.body_template !== undefined) fields.body_template = data.body_template;
   if (data.auth_type !== undefined) fields.auth_type = data.auth_type;
   if (data.auth_config !== undefined) fields.auth_config = data.auth_config ? encryptObject(data.auth_config) : null;
+  if (data.payload_schema !== undefined) fields.payload_schema = data.payload_schema ? JSON.stringify(data.payload_schema) : null;
 
   if (Object.keys(fields).length > 0) {
     const setClauses = Object.keys(fields).map(k => `${k} = ?`).join(', ');

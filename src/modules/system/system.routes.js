@@ -26,6 +26,16 @@ router.use(requireMaster);
 
 const ROOT = path.join(__dirname, '../../../');
 
+// GET /api/system/privilege
+// Verifica si el proceso corre con privilegios de Administrador de Windows
+router.get('/privilege', (req, res) => {
+  execFile('net', ['session'], { timeout: 4000 }, (err) => {
+    const isAdmin = !err;
+    const username = process.env.USERNAME || process.env.USER || 'desconocido';
+    return success(res, { isAdmin, username });
+  });
+});
+
 // GET /api/system/status
 // Estado del servicio Windows via sc.exe
 router.get('/status', (req, res) => {
@@ -43,6 +53,44 @@ router.get('/status', (req, res) => {
     const stateMatch = text.match(/STATE\s*:\s*\d+\s+(\w+)/);
     const state = stateMatch ? stateMatch[1] : 'UNKNOWN';
     return success(res, { installed: true, state, raw: text.trim() });
+  });
+});
+
+// POST /api/system/start
+// Inicia el servicio Windows (sc start)
+router.post('/start', (req, res) => {
+  logger.info('System: iniciando servicio Windows', { user: req.user.username });
+  execFile('sc', ['start', 'klsyncbridge.exe'], { timeout: 15000 }, (err, stdout, stderr) => {
+    const text = (stdout || '') + (stderr || '');
+    if (err) {
+      const alreadyRunning = err.code === 1056 || text.includes('1056');
+      if (alreadyRunning) {
+        return success(res, { message: 'El servicio ya estaba en ejecución', raw: text.trim() });
+      }
+      logger.error('System: error iniciando servicio', { error: err.message, code: err.code });
+      return fromError(res, new AppError(`No se pudo iniciar el servicio: ${text.trim() || err.message}`, 'SERVICE_START_ERROR', 500));
+    }
+    logger.info('System: servicio iniciado correctamente');
+    return success(res, { message: 'Servicio iniciado correctamente', raw: text.trim() });
+  });
+});
+
+// POST /api/system/stop
+// Detiene el servicio Windows (sc stop)
+router.post('/stop', (req, res) => {
+  logger.info('System: deteniendo servicio Windows', { user: req.user.username });
+  execFile('sc', ['stop', 'klsyncbridge.exe'], { timeout: 15000 }, (err, stdout, stderr) => {
+    const text = (stdout || '') + (stderr || '');
+    if (err) {
+      const alreadyStopped = err.code === 1062 || text.includes('1062');
+      if (alreadyStopped) {
+        return success(res, { message: 'El servicio ya estaba detenido', raw: text.trim() });
+      }
+      logger.error('System: error deteniendo servicio', { error: err.message, code: err.code });
+      return fromError(res, new AppError(`No se pudo detener el servicio: ${text.trim() || err.message}`, 'SERVICE_STOP_ERROR', 500));
+    }
+    logger.info('System: servicio detenido correctamente');
+    return success(res, { message: 'Servicio detenido correctamente', raw: text.trim() });
   });
 });
 
