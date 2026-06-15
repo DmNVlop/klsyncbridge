@@ -1,5 +1,5 @@
 {
-  "version": "1.3.1",
+  "version": "1.3.2",
   "release_date": "2026-06-15",
-  "changelog": "Incluido modulo src/modules/logs que habia sido ignorado por git, y corregida ruta de backup de daemon en update.bat"
+  "changelog": "Corregido bloqueo en el reinicio del servicio usando un proceso desacoplado en background"
 }
