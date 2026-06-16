@@ -1,5 +1,5 @@
 {
-  "version": "1.4.3",
+  "version": "1.4.4",
   "release_date": "2026-06-16",
-  "changelog": "- fix(api-configs): preserve credentials on edit and populate auth fields"
+  "changelog": "- feat(jobs): add row-level filter to job execution"
 }
