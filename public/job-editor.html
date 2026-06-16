@@ -262,39 +262,78 @@
       <div class="mt-6 bg-base rounded-lg border border-white/5">
         <button type="button" onclick="toggleFilterPanel()" class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors rounded-lg">
           <div class="flex items-center gap-2">
+            <svg class="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
+            </svg>
             <span class="text-xs font-medium text-slate-400">Filtro de filas</span>
-            <span id="filter-active-badge" class="hidden text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">activo</span>
+            <span id="filter-active-badge" class="hidden text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">● activo</span>
+            <span class="text-xs text-slate-600">— opcional</span>
           </div>
           <svg id="filter-chevron" class="w-4 h-4 text-slate-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
           </svg>
         </button>
         <div id="filter-panel-body" class="hidden px-4 pb-4">
-          <p class="text-xs text-slate-500 mb-3">Expresión JavaScript evaluada por cada fila. Si devuelve <span class="font-mono">false</span>, la fila se omite. Todas las columnas del origen están disponibles como variables.</p>
-          <div class="flex items-center gap-3 mb-3">
-            <input id="j-filter-enabled" type="checkbox" class="rounded" onchange="syncFilterBadge();updateJsonPreview();">
-            <label for="j-filter-enabled" class="text-sm text-slate-300">Activar filtro</label>
+
+          <!-- Hint card -->
+          <div class="mb-4 p-3 bg-amber-950/30 border border-amber-500/20 rounded-lg flex gap-3">
+            <svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div class="text-xs text-amber-200/70 space-y-1">
+              <p>El filtro se evalúa <span class="text-amber-300 font-medium">fila por fila</span> antes de armar el JSON de salida. Las filas que no cumplan la condición se saltan — no se envían a la API.</p>
+              <p>Cada columna del origen SQL está disponible como variable con su nombre exacto. Si el valor es texto, comparalo entre comillas: <span class="font-mono text-amber-300">CATEGORIA == "Sheet"</span>. Si es número, sin comillas: <span class="font-mono text-amber-300">ESPESOR > 4</span>.</p>
+            </div>
           </div>
+
           <!-- Builder visual de condiciones -->
           <div id="filter-builder-simple">
+            <p class="text-xs text-slate-500 mb-2">Definí una o más condiciones. Las filas que <span class="font-medium text-slate-400">no las cumplan</span> se omiten.</p>
             <div id="filter-conditions" class="space-y-2 mb-2"></div>
-            <div class="flex gap-2 mb-3">
-              <button type="button" onclick="addFilterCondition('&&')" class="text-xs px-2 py-1 rounded border border-white/10 text-slate-400 hover:text-white hover:border-white/20">+ AND</button>
-              <button type="button" onclick="addFilterCondition('||')" class="text-xs px-2 py-1 rounded border border-white/10 text-slate-400 hover:text-white hover:border-white/20">+ OR</button>
+            <div class="flex gap-2 mb-1">
+              <button type="button" onclick="addFilterCondition('&&')" class="text-xs px-2.5 py-1 rounded border border-white/10 text-slate-400 hover:text-white hover:border-white/20 flex items-center gap-1">
+                <span class="text-slate-600">+</span> AND
+                <span class="text-slate-600 font-normal text-xs">(ambas deben cumplirse)</span>
+              </button>
+              <button type="button" onclick="addFilterCondition('||')" class="text-xs px-2.5 py-1 rounded border border-white/10 text-slate-400 hover:text-white hover:border-white/20 flex items-center gap-1">
+                <span class="text-slate-600">+</span> OR
+                <span class="text-slate-600 font-normal text-xs">(basta con una)</span>
+              </button>
+            </div>
+            <div id="filter-no-conditions" class="py-2 px-3 rounded border border-dashed border-white/10 text-xs text-slate-600 mb-3">
+              Sin condiciones — todas las filas pasan. Usá los botones de arriba para agregar.
             </div>
             <span class="expr-adv-toggle text-xs" onclick="toggleFilterAdvanced()">Expresión avanzada ↗</span>
           </div>
+
           <div id="filter-builder-adv" style="display:none">
+            <p class="text-xs text-slate-500 mb-2">Escribí cualquier expresión JavaScript. Devuelve <span class="font-mono">true</span> para incluir la fila, <span class="font-mono">false</span> para omitirla.</p>
             <textarea id="j-filter-expression" class="inp font-mono text-xs w-full" rows="3"
               placeholder="ESPESOR > 4 || CATEGORIA == &quot;Sheet&quot;"
               oninput="syncFilterBadge();updateJsonPreview();"></textarea>
-            <div class="mt-1.5 space-y-1">
-              <p class="text-xs text-slate-500">Operadores: <span class="font-mono">&gt; &lt; &gt;= &lt;= == != && || !</span> — Ternario y anidamientos: <span class="font-mono">(A > 1 && B == "x") || C != 0</span></p>
-              <p class="text-xs text-slate-600">Variables disponibles: <span id="filter-vars" class="font-mono text-slate-400"></span></p>
+            <div class="mt-2 space-y-1.5">
+              <p class="text-xs text-slate-500">Operadores: <span class="font-mono">&gt; &lt; &gt;= &lt;= == != && || !</span></p>
+              <p class="text-xs text-slate-600">Anidamientos: <span class="font-mono">(ESPESOR >= 18 && TIPO == "MDF") || ACTIVO == 0</span></p>
+              <p class="text-xs text-slate-600">Texto incluye: <span class="font-mono">String(DESCRIPCION).includes("Blanco")</span></p>
+              <p class="text-xs text-slate-600 mt-1">Variables disponibles: <span id="filter-vars" class="font-mono text-slate-400">(cargá la tabla en Paso 1)</span></p>
             </div>
-            <span class="expr-adv-toggle text-xs mt-2 inline-block" onclick="toggleFilterAdvanced()">Builder visual ↙</span>
+            <span class="expr-adv-toggle text-xs mt-3 inline-block" onclick="toggleFilterAdvanced()">Builder visual ↙</span>
           </div>
-          <div id="filter-expr-preview" class="mt-3 p-2 bg-surface rounded border border-white/5 text-xs font-mono text-slate-400 hidden"></div>
+
+          <!-- Preview de expresión generada -->
+          <div id="filter-expr-preview-wrap" class="mt-4 hidden">
+            <p class="text-xs text-slate-500 mb-1">Expresión que se aplicará:</p>
+            <div id="filter-expr-preview" class="p-2.5 bg-surface rounded border border-amber-500/20 text-xs font-mono text-amber-300/80 break-all"></div>
+          </div>
+
+          <!-- Activar filtro — al final, una vez que el usuario ya lo configuró -->
+          <div class="mt-4 pt-4 border-t border-white/5 flex items-center gap-3">
+            <input id="j-filter-enabled" type="checkbox" class="rounded" onchange="syncFilterBadge();updateJsonPreview();">
+            <div>
+              <label for="j-filter-enabled" class="text-sm text-slate-300 cursor-pointer">Activar filtro al ejecutar</label>
+              <p class="text-xs text-slate-600 mt-0.5">Si está desactivado, el filtro se guarda pero no se aplica — todas las filas pasan.</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -848,6 +887,7 @@
       const isOpen = !body.classList.contains('hidden');
       body.classList.toggle('hidden', isOpen);
       chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+      if (!isOpen) syncFilterPreview(); // inicializar hint "sin condiciones" al abrir
     }
 
     function toggleFilterAdvanced() {
@@ -857,9 +897,14 @@
       simple.style.display = isAdv ? '' : 'none';
       adv.style.display    = isAdv ? 'none' : '';
       if (!isAdv) {
-        // Migrar expresión del builder visual al textarea
         const expr = buildFilterExpression();
         if (expr) document.getElementById('j-filter-expression').value = expr;
+      }
+      // Al volver al builder simple, re-evaluar hint "sin condiciones"
+      const noConditions = document.getElementById('filter-no-conditions');
+      if (noConditions && isAdv) {
+        const container = document.getElementById('filter-conditions');
+        noConditions.style.display = container.children.length === 0 ? '' : 'none';
       }
       syncFilterPreview();
     }
@@ -916,14 +961,23 @@
         ? document.getElementById('j-filter-expression').value.trim()
         : buildFilterExpression();
       const preview = document.getElementById('filter-expr-preview');
+      const wrap = document.getElementById('filter-expr-preview-wrap');
+      const noConditions = document.getElementById('filter-no-conditions');
+
       if (expr) {
         preview.textContent = expr;
-        preview.classList.remove('hidden');
-        // Sync to hidden field when in simple mode
+        wrap.classList.remove('hidden');
         if (!isAdv) document.getElementById('j-filter-expression').value = expr;
       } else {
-        preview.classList.add('hidden');
+        wrap.classList.add('hidden');
       }
+
+      // Mostrar/ocultar hint "sin condiciones" en modo simple
+      if (!isAdv && noConditions) {
+        const container = document.getElementById('filter-conditions');
+        noConditions.style.display = container.children.length === 0 ? '' : 'none';
+      }
+
       syncFilterBadge();
     }
 
