@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "release_date": "2026-06-16",
-  "changelog": "- feat: envío por lotes configurable (batch_size + batch_concurrency) en jobs"
+  "changelog": "- feat: real-time SSE para jobs y logs"
 }
