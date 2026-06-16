@@ -1,5 +1,5 @@
 {
-  "version": "1.4.2",
+  "version": "1.4.3",
   "release_date": "2026-06-16",
-  "changelog": "- feat: store request_headers in integration_logs and add copy-cURL button to logs UI"
+  "changelog": "- fix(api-configs): preserve credentials on edit and populate auth fields"
 }
