@@ -1,5 +1,5 @@
 {
-  "version": "1.5.0",
+  "version": "1.5.1",
   "release_date": "2026-06-16",
-  "changelog": "- feat(job-editor): mejorar UX del panel de filtro de filas"
+  "changelog": "- fix(logs): mejorar contraste de stat cards en modal de ejecución"
 }
