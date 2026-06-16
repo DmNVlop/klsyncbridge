@@ -6,10 +6,12 @@ const { AuthenticationError } = require('../../utils/errors');
 
 function requireAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  // EventSource no soporta headers — acepta ?token= como fallback para SSE
+  const queryToken = req.query && req.query.token;
+  if (!authHeader && !queryToken) {
     return fromError(res, new AuthenticationError('Token requerido'));
   }
-  const token = authHeader.slice(7);
+  const token = authHeader ? authHeader.slice(7) : queryToken;
   try {
     const payload = verifyToken(token);
     req.user = payload;

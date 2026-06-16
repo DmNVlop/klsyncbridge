@@ -42,6 +42,7 @@
 
   <script src="/js/auth.js"></script>
   <script src="/js/ui.js"></script>
+  <script src="/js/realtime.js"></script>
   <script>
     AUTH.requireAuth();
     UI.buildNav();
@@ -58,7 +59,7 @@
         }
 
         tbody.innerHTML = jobs.map(j => `
-          <tr class="border-b border-white/5 hover:bg-white/2">
+          <tr class="border-b border-white/5 hover:bg-white/2" data-job-id="${j.id}">
             <td class="px-6 py-3">
               <div class="font-medium text-white">${j.name}</div>
               ${j.description ? `<div class="text-slate-500 text-xs">${j.description}</div>` : ''}
@@ -67,13 +68,13 @@
             <td class="px-6 py-3 text-slate-400 font-mono text-xs">${j.op_mode || '—'}</td>
             <td class="px-6 py-3 text-slate-400 font-mono text-xs">${j.sync_mode}</td>
             <td class="px-6 py-3 text-slate-400 font-mono text-xs">${j.schedule_type==='interval'?`cada ${j.schedule_value}m`:j.schedule_value}</td>
-            <td class="px-6 py-3">
-              <span class="px-2 py-0.5 rounded text-xs font-medium ${j.is_active?'bg-accent/20 text-accent':'bg-white/5 text-slate-400'}">
+            <td class="px-6 py-3 job-status-cell">
+              <span class="job-active-badge px-2 py-0.5 rounded text-xs font-medium ${j.is_active?'bg-accent/20 text-accent':'bg-white/5 text-slate-400'}">
                 ${j.is_active?'Activo':'Inactivo'}
               </span>
             </td>
-            <td class="px-6 py-3">${UI.statusBadge(j.last_run_status)}</td>
-            <td class="px-6 py-3 text-slate-400 font-mono text-xs">${UI.formatDate(j.last_run_at)}</td>
+            <td class="px-6 py-3 job-result-cell">${UI.statusBadge(j.last_run_status)}</td>
+            <td class="px-6 py-3 text-slate-400 font-mono text-xs job-date-cell">${UI.formatDate(j.last_run_at)}</td>
             <td class="px-6 py-3">
               <div class="flex items-center justify-end gap-1">
                 <button onclick="runNow('${j.id}','${j.name.replace(/'/g,"\\'")}');" class="px-2 py-1 rounded bg-white/5 hover:bg-accent/20 hover:text-accent text-slate-400 text-xs transition-colors">▶</button>
@@ -131,6 +132,60 @@
       catch (err) { UI.toast('Error: ' + err.message, 'error'); }
     }
 
+    // Indicador visual de estado de ejecución en una fila
+    function setRowRunning(jobId, running) {
+      const rows = document.querySelectorAll('#jobs-tbody tr');
+      for (const row of rows) {
+        if (row.dataset.jobId === String(jobId)) {
+          const statusCell = row.querySelector('.job-status-cell');
+          if (statusCell) {
+            if (running) {
+              statusCell.innerHTML = '<span class="px-2 py-0.5 rounded text-xs font-medium bg-blue-900/40 text-blue-300 animate-pulse">Ejecutando…</span>';
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    function patchRowFromEvent(data) {
+      const rows = document.querySelectorAll('#jobs-tbody tr');
+      for (const row of rows) {
+        if (row.dataset.jobId !== String(data.id)) continue;
+
+        // Estado activo/inactivo
+        const activeBadge = row.querySelector('.job-active-badge');
+        if (activeBadge) {
+          activeBadge.className = `job-active-badge px-2 py-0.5 rounded text-xs font-medium ${data.is_active ? 'bg-accent/20 text-accent' : 'bg-white/5 text-slate-400'}`;
+          activeBadge.textContent = data.is_active ? 'Activo' : 'Inactivo';
+        }
+
+        // Último resultado
+        const resultCell = row.querySelector('.job-result-cell');
+        if (resultCell) resultCell.innerHTML = UI.statusBadge(data.last_run_status);
+
+        // Última ejecución
+        const dateCell = row.querySelector('.job-date-cell');
+        if (dateCell) dateCell.textContent = UI.formatDate(data.last_run_at);
+
+        // Estado de ejecución (quitar "Ejecutando…")
+        const statusCell = row.querySelector('.job-status-cell');
+        if (statusCell) {
+          statusCell.innerHTML = `<span class="job-active-badge px-2 py-0.5 rounded text-xs font-medium ${data.is_active ? 'bg-accent/20 text-accent' : 'bg-white/5 text-slate-400'}">${data.is_active ? 'Activo' : 'Inactivo'}</span>`;
+        }
+
+        break;
+      }
+    }
+
+    REALTIME.on('job.execution_started', ({ id }) => setRowRunning(id, true));
+    REALTIME.on('job.status_changed', patchRowFromEvent);
+    REALTIME.on('job.execution_finished', ({ id, name, status }) => {
+      const type = status === 'success' ? 'success' : status === 'partial' ? 'warning' : 'error';
+      UI.toast(`Job "${name}": ${status}`, type);
+    });
+
+    REALTIME.connect();
     load();
   </script>
 </body>

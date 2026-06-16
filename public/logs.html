@@ -136,6 +136,7 @@
 
   <script src="/js/auth.js"></script>
   <script src="/js/ui.js"></script>
+  <script src="/js/realtime.js"></script>
   <script>
     AUTH.requireAuth();
     UI.buildNav();
@@ -406,6 +407,19 @@
       `;
     }
 
+    // SSE: recargar ejecuciones al terminar un job (solo si estamos en tab exec, página 1)
+    REALTIME.on('job.execution_finished', () => {
+      const panelExec = document.getElementById('panel-exec');
+      if (!panelExec.classList.contains('hidden') && execPage === 1) {
+        loadExec(1);
+      }
+    });
+    // SSE: indicar visualmente que hay un job corriendo
+    REALTIME.on('job.execution_started', ({ name }) => {
+      UI.toast(`Ejecutando job "${name}"…`, 'info');
+    });
+
+    REALTIME.connect();
     loadExec();
   </script>
 </body>

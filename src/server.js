@@ -5,6 +5,8 @@ const path = require('path');
 const { fromError } = require('./utils/response');
 const logger = require('./services/logger.service');
 const { ForbiddenError } = require('./utils/errors');
+const { requireAuth } = require('./modules/auth/auth.middleware');
+const eventsService = require('./services/events.service');
 
 function createServer() {
   const app = express();
@@ -33,6 +35,26 @@ function createServer() {
     } catch {
       return res.json({ ok: true, data: { version: '0.0.0' } });
     }
+  });
+
+  // SSE — eventos en tiempo real
+  app.get('/api/events', requireAuth, (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    // Heartbeat cada 25s para mantener la conexión viva
+    const heartbeat = setInterval(() => {
+      try { res.write(': ping\n\n'); } catch { clearInterval(heartbeat); }
+    }, 25000);
+
+    eventsService.addClient(res);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      eventsService.removeClient(res);
+    });
   });
 
   // Rutas de la API

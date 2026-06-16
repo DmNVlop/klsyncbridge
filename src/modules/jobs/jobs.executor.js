@@ -10,6 +10,7 @@ const { resolveAuth } = require('../../services/auth-resolver.service');
 const { requestWithRetry } = require('../../services/http.service');
 const { TRANSFORMS, SYNC_MODES, OP_MODES, BATCH_DEFAULTS } = require('../../config/constants');
 const logger = require('../../services/logger.service');
+const eventsService = require('../../services/events.service');
 
 function now() { return new Date().toISOString(); }
 
@@ -220,6 +221,7 @@ async function executeJob(jobId) {
   const job = getJob(jobId);
 
   logger.info(`Job "${job.name}" iniciado`, { job_id: jobId, log_id: logId });
+  eventsService.emitJobExecutionStarted(jobId, job.name);
 
   db.prepare(`
     INSERT INTO execution_logs (id, job_id, job_name, started_at, status,
@@ -491,6 +493,21 @@ async function executeJob(jobId) {
   );
 
   updateJobStatus(jobId, finalStatus, { last_run_at: finishedAt });
+
+  const updatedJob = getJob(jobId);
+  eventsService.emitJobStatusChanged(updatedJob);
+
+  const result = {
+    status: finalStatus,
+    recordsRead,
+    recordsSent,
+    recordsCreated,
+    recordsUpdated,
+    recordsDeleted,
+    recordsSkipped,
+    recordsFailed,
+  };
+  eventsService.emitJobExecutionFinished(jobId, job.name, result);
 
   const duration = new Date(finishedAt) - new Date(startedAt);
   logger.info(`Job "${job.name}" ${finalStatus}`, {

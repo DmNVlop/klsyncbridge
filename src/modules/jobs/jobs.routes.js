@@ -8,6 +8,7 @@ const jobsSvc = require('./jobs.service');
 const { executeJob } = require('./jobs.executor');
 const { registerJob, unregisterJob, reloadJob, getSchedulerStatus } = require('./jobs.scheduler');
 const logsSvc = require('../logs/logs.service');
+const eventsService = require('../../services/events.service');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -57,6 +58,7 @@ router.post('/:id/activate', (req, res) => {
   try {
     const job = jobsSvc.activateJob(req.params.id);
     registerJob(job);
+    eventsService.emitJobStatusChanged(job);
     return success(res, job);
   } catch (err) { return fromError(res, err); }
 });
@@ -65,6 +67,7 @@ router.post('/:id/deactivate', (req, res) => {
   try {
     const job = jobsSvc.deactivateJob(req.params.id);
     unregisterJob(req.params.id);
+    eventsService.emitJobStatusChanged(job);
     return success(res, job);
   } catch (err) { return fromError(res, err); }
 });
