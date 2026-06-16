@@ -50,6 +50,7 @@ const createApiConfigSchema = z.object({
   body_template: z.string().optional().nullable(),
   auth_type: z.enum(Object.values(AUTH_TYPES)),
   auth_config: z.record(z.unknown()).optional().nullable(),
+  payload_schema: z.record(z.unknown()).optional().nullable(),
 });
 
 const updateApiConfigSchema = createApiConfigSchema.partial();
