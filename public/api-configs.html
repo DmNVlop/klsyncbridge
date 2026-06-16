@@ -263,8 +263,9 @@
       document.getElementById('a-method').value = c.method;
       document.getElementById('a-path').value = c.endpoint_path;
       document.getElementById('a-auth-type').value = c.auth_type;
-      document.getElementById('a-payload-schema').value = c.payload_schema ? JSON.stringify(c.payload_schema, null, 2) : '';
-      document.getElementById('schema-error').classList.add('hidden');
+      const schemaVal = c.payload_schema ? JSON.stringify(c.payload_schema, null, 2) : '';
+      document.getElementById('a-payload-schema').value = schemaVal;
+      validateSchemaUI(schemaVal);
       renderAuthFields();
       document.getElementById('test-result').classList.add('hidden');
       document.getElementById('modal').classList.remove('hidden');

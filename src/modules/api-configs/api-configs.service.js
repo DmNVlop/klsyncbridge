@@ -112,12 +112,14 @@ async function testApiConfig(id) {
     ...authResult.headers,
     ...(config.headers_json || {}),
   };
+  const body = config.payload_schema || undefined;
   try {
     const response = await requestWithRetry({
       method: config.method,
       url: `${config.base_url}${config.endpoint_path}`,
       headers,
       params: authResult.params,
+      data: body,
       timeout: 10000,
     });
     return { ok: true, message: `Respuesta ${response.status}`, http_status: response.status };

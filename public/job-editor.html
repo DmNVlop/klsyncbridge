@@ -571,7 +571,16 @@
       }
 
       // Step 2
-      if (f.api) document.getElementById('j-api').value = f.api;
+      if (f.api) {
+        document.getElementById('j-api').value = f.api;
+        const sel = document.getElementById('j-api');
+        const preview = document.getElementById('api-preview');
+        if (sel.value) {
+          document.getElementById('api-preview-text').textContent = sel.options[sel.selectedIndex].text;
+          preview.classList.remove('hidden');
+        }
+        renderSchemaPanel();
+      }
 
       // Step 3 — field maps
       if (draft.maps && draft.maps.length) {
