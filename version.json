@@ -1,5 +1,5 @@
 {
-  "version": "1.3.8",
+  "version": "1.3.9",
   "release_date": "2026-06-16",
-  "changelog": "- ux: muestra api-config si tiene schema"
+  "changelog": "- Nuevo cambio ux api-config"
 }
