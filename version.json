@@ -1,5 +1,5 @@
 {
-  "version": "1.4.4",
+  "version": "1.5.0",
   "release_date": "2026-06-16",
-  "changelog": "- feat(jobs): add row-level filter to job execution"
+  "changelog": "- feat(job-editor): mejorar UX del panel de filtro de filas"
 }
