@@ -40,10 +40,41 @@ function setNestedValue(obj, dotPath, value) {
   current[keys[keys.length - 1]] = value;
 }
 
+function evaluateExpression(expression, record) {
+  // Construye un contexto con todas las columnas de la fila como variables
+  const varNames = Object.keys(record);
+  const varValues = varNames.map(k => record[k]);
+  try {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(...varNames, `"use strict"; return (${expression});`);
+    return fn(...varValues);
+  } catch (err) {
+    logger.warn('Error evaluando expresión de campo', { expression, error: err.message });
+    return null;
+  }
+}
+
+function resolveFieldValue(map, record) {
+  const sourceType = map.source_type || 'field';
+
+  if (sourceType === 'static') {
+    // Valor literal siempre — usa default_value como el valor fijo
+    return map.default_value ?? null;
+  }
+
+  if (sourceType === 'expression') {
+    const raw = evaluateExpression(map.expression, record);
+    return applyTransform(raw, map.transform, map.default_value);
+  }
+
+  // sourceType === 'field' (comportamiento original)
+  return applyTransform(record[map.sql_field], map.transform, map.default_value);
+}
+
 function buildPayload(record, fieldMaps) {
   const payload = {};
   for (const map of fieldMaps) {
-    const value = applyTransform(record[map.sql_field], map.transform, map.default_value);
+    const value = resolveFieldValue(map, record);
     setNestedValue(payload, map.api_field, value);
   }
   return payload;

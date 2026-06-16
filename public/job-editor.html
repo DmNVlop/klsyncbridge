@@ -13,6 +13,15 @@
     .inp:focus{border-color:#3b82f6}
     .inp option{background:#1a1d27}
     .step-inactive{opacity:0.4}
+    .map-mode-btn{padding:0.25rem 0.6rem;border-radius:0.375rem;font-size:0.7rem;font-weight:600;border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:all 0.15s;white-space:nowrap}
+    .map-mode-btn.active-field{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd}
+    .map-mode-btn.active-static{background:#1a3320;border-color:#22c55e;color:#86efac}
+    .map-mode-btn.active-expr{background:#3b1f47;border-color:#a855f7;color:#d8b4fe}
+    .map-mode-btn:not([class*="active"]){background:transparent;color:#64748b}
+    .expr-builder{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem}
+    .expr-builder select,.expr-builder input{padding:0.3rem 0.5rem;border-radius:0.375rem;background:#0f1117;border:1px solid rgba(255,255,255,0.1);color:white;font-size:0.75rem;min-width:0}
+    .expr-adv-toggle{font-size:0.7rem;color:#a855f7;cursor:pointer;text-decoration:underline;white-space:nowrap}
+    .expr-adv-toggle:hover{color:#c084fc}
   </style>
 </head>
 <body>
@@ -88,6 +97,7 @@
             <select id="j-key" class="inp">
               <option value="">Seleccionar campo...</option>
             </select>
+            <p class="text-xs text-slate-500 mt-1">Identifica unívocamente cada registro. Se usa para detectar cambios y eliminar duplicados. Ej: <span class="font-mono">Id</span>, <span class="font-mono">codigo</span>.</p>
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Modo de sincronización</label>
@@ -95,6 +105,7 @@
               <option value="incremental">Incremental</option>
               <option value="full">Full</option>
             </select>
+            <p class="text-xs text-slate-500 mt-1"><span class="text-slate-400 font-medium">Incremental:</span> solo trae registros modificados desde la última ejecución (requiere campo de fecha). <span class="text-slate-400 font-medium">Full:</span> lee toda la tabla cada vez.</p>
           </div>
         </div>
         <div id="date-field-row">
@@ -102,6 +113,7 @@
           <select id="j-date-field" class="inp">
             <option value="">Sin campo de fecha</option>
           </select>
+          <p class="text-xs text-slate-500 mt-1">Campo datetime que indica la última modificación del registro. Sin él, el incremental lee todo igual que Full.</p>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -113,25 +125,30 @@
               <option value="handle">handle</option>
               <option value="kitchenDoor">kitchenDoor</option>
             </select>
+            <p class="text-xs text-slate-500 mt-1">Categoría del objeto en ArdisApp. Determina cómo procesa cada ítem la API destino.</p>
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Modo de operación</label>
             <select id="j-op-mode" onchange="togglePassthroughField()" class="inp">
               <option value="snapshot">snapshot (delta automático)</option>
-              <option value="passthrough">passthrough (campo SQL)</option>
+              <option value="passthrough">passthrough (campo Fuente)</option>
             </select>
+            <p class="text-xs text-slate-500 mt-1"><span class="text-slate-400 font-medium">Snapshot:</span> el sistema detecta automáticamente creaciones, modificaciones y bajas comparando con la ejecución anterior. <span class="text-slate-400 font-medium">Passthrough:</span> cada registro trae el tipo de operación en un campo propio.</p>
           </div>
         </div>
         <div id="passthrough-field-row" class="hidden">
-          <label class="block text-xs font-medium text-slate-400 mb-1">Campo SQL de operación (passthrough)</label>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Campo Fuente de operación (passthrough)</label>
           <select id="j-op-passthrough-field" class="inp">
             <option value="">Seleccionar campo...</option>
           </select>
-          <p class="text-xs text-slate-500 mt-1">Cada fila debe tener este campo con valor: <span class="font-mono">upsert</span> o <span class="font-mono">delete</span>.</p>
+          <p class="text-xs text-slate-500 mt-1">Cada fila debe tener este campo con valor: <span class="font-mono">upsert</span> (crear o actualizar) o <span class="font-mono">delete</span> (eliminar).</p>
         </div>
-        <div class="flex items-center gap-3">
-          <input id="j-send-empty-sync" type="checkbox" class="rounded">
-          <label for="j-send-empty-sync" class="text-sm text-slate-300">Enviar request aunque no haya cambios (<span class="font-mono text-slate-400">send_empty_sync</span>)</label>
+        <div class="flex items-start gap-3">
+          <input id="j-send-empty-sync" type="checkbox" class="rounded mt-0.5">
+          <div>
+            <label for="j-send-empty-sync" class="text-sm text-slate-300">Enviar request aunque no haya cambios</label>
+            <p class="text-xs text-slate-500 mt-0.5">Si está activo, se hace el request a la API incluso cuando no hay registros nuevos o modificados. Útil para APIs que esperan un heartbeat periódico.</p>
+          </div>
         </div>
       </div>
       <div class="flex justify-end mt-6">
@@ -148,6 +165,7 @@
           <select id="j-api" class="inp">
             <option value="">Seleccionar API...</option>
           </select>
+          <p class="text-xs text-slate-500 mt-1">Seleccioná la API previamente configurada en la sección <span class="text-slate-400">API Configs</span>. Define la URL, método HTTP y autenticación. Si no aparece la que buscás, creála primero desde el menú principal.</p>
         </div>
         <div id="api-preview" class="hidden p-4 bg-base rounded-lg border border-white/5">
           <p id="api-preview-text" class="text-sm font-mono text-slate-300"></p>
@@ -161,7 +179,36 @@
 
     <!-- Step 3 -->
     <div id="step-3" class="hidden bg-surface rounded-xl border border-white/5 p-6">
-      <h2 class="font-medium text-white mb-5">Paso 3: Mapeo de campos</h2>
+      <h2 class="font-medium text-white mb-2">Paso 3: Mapeo de campos</h2>
+      <p class="text-xs text-slate-500 mb-5">Definí cómo se construye el objeto que se envía a la API. Cada fila es un campo del JSON de salida. Elegí el modo según la fuente del valor:</p>
+
+      <!-- Modos hint cards -->
+      <div class="grid grid-cols-3 gap-3 mb-6 text-xs">
+        <div class="bg-base rounded-lg border border-blue-500/20 p-3">
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+            <span class="font-semibold text-blue-400">Campo Fuente</span>
+          </div>
+          <p class="text-slate-500">Toma el valor directamente de una columna del origen de datos. Podés aplicar una transformación (mayúsculas, número, fecha ISO, etc.).</p>
+          <p class="text-slate-600 mt-1.5">Ej: columna <span class="font-mono text-slate-400">Descripcion</span> → campo API <span class="font-mono text-slate-400">nombre</span></p>
+        </div>
+        <div class="bg-base rounded-lg border border-emerald-500/20 p-3">
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+            <span class="font-semibold text-emerald-400">Fijo</span>
+          </div>
+          <p class="text-slate-500">Asigna un valor literal constante al campo API. Siempre envía el mismo valor, independientemente de los datos del origen.</p>
+          <p class="text-slate-600 mt-1.5">Ej: <span class="font-mono text-slate-400">espesor</span> = <span class="font-mono text-slate-400">10</span> — o <span class="font-mono text-slate-400">activo</span> = <span class="font-mono text-slate-400">true</span></p>
+        </div>
+        <div class="bg-base rounded-lg border border-purple-500/20 p-3">
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="w-2 h-2 rounded-full bg-purple-500 shrink-0"></span>
+            <span class="font-semibold text-purple-400">Expresión</span>
+          </div>
+          <p class="text-slate-500">Calcula el valor mediante una condición. El builder visual arma un ternario simple; la expresión avanzada permite JS completo con todas las columnas como variables.</p>
+          <p class="text-slate-600 mt-1.5">Ej: <span class="font-mono text-slate-400">ESPESOR &gt;= 18 ? "Grueso" : "Fino"</span></p>
+        </div>
+      </div>
 
       <!-- Schema panel -->
       <div id="schema-panel" class="hidden mb-5 bg-base rounded-lg border border-white/5">
@@ -185,10 +232,10 @@
         <table class="w-full text-sm mb-4">
           <thead>
             <tr class="border-b border-white/5">
-              <th class="text-left py-2 px-2 text-slate-400 font-medium">Campo SQL</th>
               <th class="text-left py-2 px-2 text-slate-400 font-medium">Campo API</th>
-              <th class="text-left py-2 px-2 text-slate-400 font-medium">Transformación</th>
-              <th class="text-left py-2 px-2 text-slate-400 font-medium">Defecto</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Modo</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Fuente / Valor</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Transform</th>
               <th class="py-2 px-2"></th>
             </tr>
           </thead>
@@ -224,6 +271,7 @@
         <div id="sched-cron" class="hidden">
           <label class="block text-xs font-medium text-slate-400 mb-1">Expresión cron</label>
           <input id="j-sched-val-cron" type="text" class="inp" placeholder="*/30 * * * *" oninput="updateSchedulePreview()">
+          <p class="text-xs text-slate-500 mt-1">Formato: <span class="font-mono">minuto hora día-mes mes día-semana</span>. Ejemplos: <span class="font-mono">*/30 * * * *</span> (cada 30 min) · <span class="font-mono">0 6 * * *</span> (todos los días a las 6:00) · <span class="font-mono">0 8 * * 1-5</span> (lunes a viernes a las 8:00).</p>
         </div>
         <div id="sched-preview" class="p-3 bg-base rounded-lg border border-white/5 text-sm text-slate-300 font-mono"></div>
         <div class="flex items-center gap-3">
@@ -300,7 +348,24 @@
           if (j.op_passthrough_field) document.getElementById('j-op-passthrough-field').value = j.op_passthrough_field;
           document.getElementById('j-send-empty-sync').checked = Boolean(j.send_empty_sync);
 
-          fieldMaps = (mapsRes.data||[]).map(m=>({sql:m.sql_field,api:m.api_field,transform:m.transform||'none',def:m.default_value||''}));
+          fieldMaps = (mapsRes.data||[]).map(m=>{
+            let meta = {};
+            try { meta = m.expression_meta ? JSON.parse(m.expression_meta) : {}; } catch(e){}
+            return {
+              sql:            m.sql_field,
+              api:            m.api_field,
+              transform:      m.transform||'none',
+              def:            m.default_value||'',
+              source_type:    m.source_type||'field',
+              expression:     m.expression||'',
+              static_val:     m.source_type==='static' ? (m.default_value||'') : '',
+              expr_cond_field: meta.expr_cond_field||'',
+              expr_cond_op:    meta.expr_cond_op||'>=',
+              expr_cond_val:   meta.expr_cond_val||'',
+              expr_then:       meta.expr_then||'',
+              expr_else:       meta.expr_else||'',
+            };
+          });
           renderMapRows();
         } catch(e){ console.error(e); }
       }
@@ -469,32 +534,171 @@
       }
     }
 
-    function addMapRow(map=null, prefilledApiField=null) {
-      const opts = sqlFields.map(f=>`<option value="${f.name}">${f.name}</option>`).join('');
-      const transforms = ['none','uppercase','lowercase','trim','number','boolean','date_iso','string'];
-      const tOpts = transforms.map(t=>`<option value="${t}">${t}</option>`).join('');
-      const row = document.createElement('tr');
-      row.className = 'border-b border-white/5';
-      row.innerHTML = `
-        <td class="py-1 px-2"><select class="inp map-sql">${opts}</select></td>
-        <td class="py-1 px-2"><input type="text" class="inp map-api" placeholder="campo.anidado" list="api-schema-fields"></td>
-        <td class="py-1 px-2"><select class="inp map-transform">${tOpts}</select></td>
-        <td class="py-1 px-2"><input type="text" class="inp map-default" placeholder=""></td>
-        <td class="py-1 px-2"><button type="button" onclick="this.closest('tr').remove();updateJsonPreview();renderSchemaPanel()" class="text-red-400 hover:text-red-300 px-2">✕</button></td>
-      `;
-      if (map) {
-        row.querySelector('.map-sql').value = map.sql;
-        row.querySelector('.map-api').value = map.api;
-        row.querySelector('.map-transform').value = map.transform;
-        row.querySelector('.map-default').value = map.def;
-      } else if (prefilledApiField) {
-        row.querySelector('.map-api').value = prefilledApiField;
+    // ── Map rows ──────────────────────────────────────────────────
+    const TRANSFORMS = ['none','uppercase','lowercase','trim','number','boolean','date_iso','string'];
+
+    function makeSqlOpts(selected) {
+      const empty = `<option value="">— ninguno —</option>`;
+      return empty + sqlFields.map(f =>
+        `<option value="${f.name}" ${f.name===selected?'selected':''}>${f.name}</option>`
+      ).join('');
+    }
+
+    function makeTransformOpts(selected) {
+      return TRANSFORMS.map(t => `<option value="${t}" ${t===selected?'selected':''}>${t}</option>`).join('');
+    }
+
+    function makeOpOpts(selected) {
+      const ops = ['>=','<=','>','<','===','!==','includes'];
+      return ops.map(o => `<option value="${o}" ${o===selected?'selected':''}>${o}</option>`).join('');
+    }
+
+    function setMapRowMode(row, mode) {
+      const btns = row.querySelectorAll('.map-mode-btn');
+      btns.forEach(b => {
+        b.classList.remove('active-field','active-static','active-expr');
+      });
+      const active = row.querySelector(`.map-mode-btn[data-mode="${mode}"]`);
+      if (active) active.classList.add(`active-${mode}`);
+
+      row.querySelector('.cell-field').style.display   = mode === 'field'      ? '' : 'none';
+      row.querySelector('.cell-static').style.display  = mode === 'static'     ? '' : 'none';
+      row.querySelector('.cell-expr').style.display    = mode === 'expression' ? '' : 'none';
+      row.querySelector('.cell-transform').style.display = mode !== 'static'   ? '' : 'none';
+
+      row.dataset.mode = mode;
+      updateJsonPreview();
+    }
+
+    function toggleExprAdvanced(row) {
+      const builder = row.querySelector('.expr-builder-simple');
+      const adv     = row.querySelector('.expr-builder-adv');
+      const isAdv   = adv.style.display !== 'none';
+      builder.style.display = isAdv ? ''     : 'none';
+      adv.style.display     = isAdv ? 'none' : '';
+
+      if (!isAdv) {
+        const expr = buildSimpleExpression(row);
+        if (expr) row.querySelector('.expr-adv-input').value = expr;
       }
-      row.querySelectorAll('select,input').forEach(el => el.addEventListener('input', updateJsonPreview));
+      updateJsonPreview();
+    }
+
+    function buildSimpleExpression(row) {
+      const condField = row.querySelector('.expr-cond-field').value;
+      const condOp    = row.querySelector('.expr-cond-op').value;
+      const condVal   = row.querySelector('.expr-cond-val').value;
+      const thenVal   = row.querySelector('.expr-then').value;
+      const elseVal   = row.querySelector('.expr-else').value;
+      if (!condField) return '';
+      const lhs = condField;
+      const rhs = isNaN(condVal) || condVal === '' ? `"${condVal}"` : condVal;
+      const thenOut = (thenVal && isNaN(thenVal)) ? `"${thenVal}"` : (thenVal || 'null');
+      const elseOut = (elseVal && isNaN(elseVal)) ? `"${elseVal}"` : (elseVal || 'null');
+      return `${lhs} ${condOp} ${rhs} ? ${thenOut} : ${elseOut}`;
+    }
+
+    function getRowExpression(row) {
+      const adv = row.querySelector('.expr-builder-adv');
+      if (adv.style.display !== 'none') {
+        return row.querySelector('.expr-adv-input').value.trim();
+      }
+      return buildSimpleExpression(row);
+    }
+
+    function addMapRow(map=null, prefilledApiField=null) {
+      const mode = map?.source_type || 'field';
+      const sqlOpts = makeSqlOpts(map?.sql || '');
+      const tOpts   = makeTransformOpts(map?.transform || 'none');
+      const opOpts  = makeOpOpts('>=');
+
+      const row = document.createElement('tr');
+      row.className = 'border-b border-white/5 align-top';
+      row.dataset.mode = mode;
+
+      row.innerHTML = `
+        <td class="py-2 px-2" style="min-width:140px">
+          <input type="text" class="inp map-api" placeholder="campo o padre.hijo" list="api-schema-fields" value="${prefilledApiField||map?.api||''}">
+          <p class="text-xs text-slate-600 mt-1">Nombre del campo en el JSON de salida. Usá <span class="font-mono">.</span> para anidado: <span class="font-mono">datos.color</span>.</p>
+        </td>
+        <td class="py-2 px-2" style="min-width:90px">
+          <div class="flex gap-1 flex-wrap">
+            <button type="button" class="map-mode-btn" data-mode="field"      onclick="setMapRowMode(this.closest('tr'),'field')">Campo Fuente</button>
+            <button type="button" class="map-mode-btn" data-mode="static"     onclick="setMapRowMode(this.closest('tr'),'static')">Fijo</button>
+            <button type="button" class="map-mode-btn" data-mode="expression" onclick="setMapRowMode(this.closest('tr'),'expression')">Expr.</button>
+          </div>
+        </td>
+        <td class="py-2 px-2 cell-field" style="min-width:130px">
+          <select class="inp map-sql">${sqlOpts}</select>
+        </td>
+        <td class="py-2 px-2 cell-static" style="min-width:130px;display:none">
+          <input type="text" class="inp map-static-val" placeholder="ej: 10 o &quot;activo&quot;" value="${map?.static_val||''}">
+          <p class="text-xs text-slate-600 mt-1">Texto libre: <span class="font-mono">Activo</span>. Número: <span class="font-mono">10</span>. Booleano: <span class="font-mono">true</span>.</p>
+        </td>
+        <td class="py-2 px-2 cell-expr" style="min-width:260px;display:none">
+          <div class="expr-builder-simple space-y-1">
+            <div class="expr-builder">
+              <span class="text-xs text-slate-500">si</span>
+              <select class="expr-cond-field inp" style="max-width:110px">${makeSqlOpts(map?.expr_cond_field||'')}</select>
+              <select class="expr-cond-op inp" style="max-width:70px">${opOpts}</select>
+              <input type="text" class="expr-cond-val inp" style="max-width:70px" placeholder="250" value="${map?.expr_cond_val||''}">
+            </div>
+            <div class="expr-builder">
+              <span class="text-xs text-slate-500">entonces</span>
+              <input type="text" class="expr-then inp" style="max-width:100px" placeholder="texto o CAMPO" value="${map?.expr_then||''}">
+              <span class="text-xs text-slate-500">sino</span>
+              <input type="text" class="expr-else inp" style="max-width:100px" placeholder="texto o CAMPO" value="${map?.expr_else||''}">
+            </div>
+            <p class="text-xs text-slate-600 mt-1">Valores literales con comillas: <span class="font-mono">"Grueso"</span>. Números sin comillas: <span class="font-mono">18</span>. Para usar el valor de otra columna escribí su nombre exacto: <span class="font-mono">NOMBRE_COLUMNA</span>.</p>
+            <span class="expr-adv-toggle" onclick="toggleExprAdvanced(this.closest('tr'))">Expresión avanzada ↗</span>
+          </div>
+          <div class="expr-builder-adv" style="display:none">
+            <textarea class="expr-adv-input inp font-mono text-xs" rows="2" placeholder="ESPESOR >= 18 ? &quot;Grueso&quot; : DESCRIPCION" style="resize:vertical">${map?.expression||''}</textarea>
+            <div class="mt-1.5 space-y-1">
+              <p class="text-xs text-slate-500">Escribí cualquier expresión JavaScript. Todas las columnas del origen están disponibles como variables con su nombre exacto.</p>
+              <p class="text-xs text-slate-600">Operadores: <span class="font-mono">== != &gt;= &lt;= &gt; &lt; && || !</span> — Ternario: <span class="font-mono">condición ? valorSi : valorNo</span></p>
+              <p class="text-xs text-slate-600">Ejemplos:<br>
+                <span class="font-mono">ESPESOR >= 18 ? "Grueso" : "Fino"</span><br>
+                <span class="font-mono">ACTIVO == 1 ? true : false</span><br>
+                <span class="font-mono">PRECIO > 1000 ? PRECIO * 0.9 : PRECIO</span>
+              </p>
+              <p class="text-xs text-slate-600 mt-1">Variables disponibles: <span class="font-mono text-slate-400">${sqlFields.map(f=>f.name).join(', ') || '(cargá la tabla en Paso 1 primero)'}</span></p>
+            </div>
+            <span class="expr-adv-toggle mt-2 inline-block" onclick="toggleExprAdvanced(this.closest('tr'))">Builder visual ↙</span>
+          </div>
+        </td>
+        <td class="py-2 px-2 cell-transform" style="min-width:100px">
+          <select class="inp map-transform">${tOpts}</select>
+        </td>
+        <td class="py-2 px-2"><button type="button" onclick="this.closest('tr').remove();updateJsonPreview();renderSchemaPanel()" class="text-red-400 hover:text-red-300 px-2 mt-1">✕</button></td>
+      `;
+
+      // Restaurar modo expression avanzado si corresponde
+      if (mode === 'expression' && map?.expression && !map?.expr_cond_field) {
+        // Tenía expresión libre guardada — mostrar modo avanzado
+        const adv     = row.querySelector('.expr-builder-adv');
+        const simple  = row.querySelector('.expr-builder-simple');
+        const link    = row.querySelector('.expr-adv-toggle');
+        adv.style.display    = '';
+        simple.style.display = 'none';
+        if (link) link.textContent = 'Builder visual ↙';
+        row.querySelector('.expr-adv-input').value = map.expression;
+      }
+
+      // Restaurar op del builder simple
+      if (map?.expr_cond_op) {
+        const opSel = row.querySelector('.expr-cond-op');
+        if (opSel) opSel.value = map.expr_cond_op;
+      }
+
+      // Aplicar modo visual
+      setMapRowMode(row, mode);
+
+      row.querySelectorAll('select,input,textarea').forEach(el => el.addEventListener('input', updateJsonPreview));
       row.querySelector('.map-api').addEventListener('input', () => renderSchemaPanel());
       document.getElementById('map-rows').appendChild(row);
       updateJsonPreview();
-      row.querySelector('.map-sql').focus();
+      row.querySelector('.map-api').focus();
     }
 
     function renderMapRows() {
@@ -504,13 +708,53 @@
 
     function getMapRows() {
       const rows = document.querySelectorAll('#map-rows tr');
-      return Array.from(rows).map((r, i) => ({
-        sql_field: r.querySelector('.map-sql').value,
-        api_field: r.querySelector('.map-api').value,
-        transform: r.querySelector('.map-transform').value,
-        default_value: r.querySelector('.map-default').value || null,
-        sort_order: i,
-      })).filter(m => m.sql_field && m.api_field);
+      return Array.from(rows).map((r, i) => {
+        const mode     = r.dataset.mode || 'field';
+        const apiField = r.querySelector('.map-api').value.trim();
+        if (!apiField) return null;
+
+        const base = {
+          api_field:     apiField,
+          transform:     r.querySelector('.map-transform')?.value || 'none',
+          sort_order:    i,
+          source_type:   mode,
+        };
+
+        if (mode === 'static') {
+          return { ...base, sql_field: '__static__', default_value: r.querySelector('.map-static-val').value, expression: null };
+        }
+
+        if (mode === 'expression') {
+          const isAdv = r.querySelector('.expr-builder-adv').style.display !== 'none';
+          let expression, expr_cond_field, expr_cond_op, expr_cond_val, expr_then, expr_else;
+          if (isAdv) {
+            expression = r.querySelector('.expr-adv-input').value.trim();
+          } else {
+            expr_cond_field = r.querySelector('.expr-cond-field').value;
+            expr_cond_op    = r.querySelector('.expr-cond-op').value;
+            expr_cond_val   = r.querySelector('.expr-cond-val').value;
+            expr_then       = r.querySelector('.expr-then').value;
+            expr_else       = r.querySelector('.expr-else').value;
+            expression      = buildSimpleExpression(r);
+          }
+          return {
+            ...base,
+            sql_field: expr_cond_field || '__expr__',
+            default_value: null,
+            expression,
+            expr_cond_field: expr_cond_field || null,
+            expr_cond_op:    expr_cond_op    || null,
+            expr_cond_val:   expr_cond_val   || null,
+            expr_then:       expr_then       || null,
+            expr_else:       expr_else       || null,
+          };
+        }
+
+        // field
+        const sqlField = r.querySelector('.map-sql').value;
+        if (!sqlField) return null;
+        return { ...base, sql_field: sqlField, default_value: r.querySelector('.map-default')?.value || null, expression: null };
+      }).filter(Boolean);
     }
 
     function updateJsonPreview() {
@@ -520,7 +764,13 @@
         const keys = m.api_field.split('.');
         let cur = preview;
         for (let i=0;i<keys.length-1;i++) { if(!cur[keys[i]])cur[keys[i]]={};cur=cur[keys[i]]; }
-        cur[keys[keys.length-1]] = `<${m.sql_field}>`;
+        if (m.source_type === 'static') {
+          cur[keys[keys.length-1]] = m.default_value || '""';
+        } else if (m.source_type === 'expression') {
+          cur[keys[keys.length-1]] = `expr: ${m.expression || '...'}`;
+        } else {
+          cur[keys[keys.length-1]] = `<${m.sql_field}>`;
+        }
       });
       document.getElementById('json-preview-text').textContent = JSON.stringify(preview, null, 2);
     }
@@ -626,7 +876,20 @@
 
       // Step 3 — field maps
       if (draft.maps && draft.maps.length) {
-        fieldMaps = draft.maps.map(m => ({ sql: m.sql_field, api: m.api_field, transform: m.transform || 'none', def: m.default_value || '' }));
+        fieldMaps = draft.maps.map(m => ({
+          sql:            m.sql_field,
+          api:            m.api_field,
+          transform:      m.transform || 'none',
+          def:            m.default_value || '',
+          source_type:    m.source_type || 'field',
+          expression:     m.expression || '',
+          static_val:     m.source_type === 'static' ? (m.default_value || '') : '',
+          expr_cond_field: m.expr_cond_field || '',
+          expr_cond_op:    m.expr_cond_op || '>=',
+          expr_cond_val:   m.expr_cond_val || '',
+          expr_then:       m.expr_then || '',
+          expr_else:       m.expr_else || '',
+        }));
         renderMapRows();
       }
 

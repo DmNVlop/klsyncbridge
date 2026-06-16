@@ -235,6 +235,20 @@ function runMigrations(db) {
     () => {
       db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('integration_log_retention_days', '90')").run();
     },
+
+    // v5: source_type y expression en field_maps (valores estáticos y expresiones condicionales)
+    () => {
+      const addColIfNotExists = (table, col, definition) => {
+        const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols.find(c => c.name === col)) {
+          db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${definition}`).run();
+        }
+      };
+      addColIfNotExists('field_maps', 'source_type', "TEXT NOT NULL DEFAULT 'field'");
+      addColIfNotExists('field_maps', 'expression', 'TEXT');
+      // expression_meta guarda el estado del builder visual (JSON) para restaurar la UI
+      addColIfNotExists('field_maps', 'expression_meta', 'TEXT');
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {

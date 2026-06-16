@@ -145,16 +145,29 @@ function saveFieldMaps(jobId, maps) {
   const transaction = db.transaction(() => {
     db.prepare('DELETE FROM field_maps WHERE job_id = ?').run(jobId);
     const insert = db.prepare(`
-      INSERT INTO field_maps (id, job_id, sql_field, api_field, transform, default_value, sort_order, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO field_maps (id, job_id, sql_field, api_field, transform, default_value, sort_order, source_type, expression, expression_meta, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const map of maps) {
+      const meta = (map.source_type === 'expression' && (map.expr_cond_field || map.expr_cond_op))
+        ? JSON.stringify({
+            expr_cond_field: map.expr_cond_field || null,
+            expr_cond_op:    map.expr_cond_op    || null,
+            expr_cond_val:   map.expr_cond_val   || null,
+            expr_then:       map.expr_then        || null,
+            expr_else:       map.expr_else        || null,
+          })
+        : null;
+
       insert.run(
         crypto.randomUUID(), jobId,
         map.sql_field, map.api_field,
         map.transform || 'none',
         map.default_value || null,
         map.sort_order || 0,
+        map.source_type || 'field',
+        map.expression || null,
+        meta,
         n
       );
     }
