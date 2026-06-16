@@ -15,6 +15,8 @@ function serialize(job) {
     send_empty_sync: Boolean(job.send_empty_sync),
     batch_size: job.batch_size || 500,
     batch_concurrency: job.batch_concurrency || 2,
+    row_filter_enabled: Boolean(job.row_filter_enabled),
+    row_filter_expression: job.row_filter_expression || null,
   };
 }
 
@@ -38,8 +40,8 @@ function createJob(data) {
     INSERT INTO jobs (id, name, description, connection_id, table_or_view, key_field, sync_mode, date_field,
       api_config_id, schedule_type, schedule_value, is_active,
       item_type, op_mode, op_passthrough_field, send_empty_sync, batch_size, batch_concurrency,
-      created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, updated_at, row_filter_enabled, row_filter_expression)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, data.name, data.description || null,
     data.connection_id, data.table_or_view, data.key_field,
@@ -52,7 +54,9 @@ function createJob(data) {
     data.send_empty_sync ? 1 : 0,
     data.batch_size || 500,
     data.batch_concurrency || 2,
-    n, n
+    n, n,
+    data.row_filter_enabled ? 1 : 0,
+    data.row_filter_expression || null
   );
   return getJob(id);
 }
@@ -67,7 +71,7 @@ function updateJob(id, data) {
 
   const allowed = ['name', 'description', 'connection_id', 'table_or_view', 'key_field',
     'sync_mode', 'date_field', 'api_config_id', 'schedule_type', 'schedule_value',
-    'item_type', 'op_mode', 'op_passthrough_field'];
+    'item_type', 'op_mode', 'op_passthrough_field', 'row_filter_expression'];
   const fields = {};
   for (const key of allowed) {
     if (data[key] !== undefined) fields[key] = data[key];
@@ -76,6 +80,8 @@ function updateJob(id, data) {
   if (data.send_empty_sync !== undefined) fields.send_empty_sync = data.send_empty_sync ? 1 : 0;
   if (data.batch_size !== undefined) fields.batch_size = parseInt(data.batch_size, 10) || 500;
   if (data.batch_concurrency !== undefined) fields.batch_concurrency = parseInt(data.batch_concurrency, 10) || 2;
+  if (data.row_filter_enabled !== undefined) fields.row_filter_enabled = data.row_filter_enabled ? 1 : 0;
+  if (data.row_filter_expression !== undefined) fields.row_filter_expression = data.row_filter_expression || null;
 
   if (Object.keys(fields).length > 0) {
     const setClauses = Object.keys(fields).map(k => `${k} = ?`).join(', ');

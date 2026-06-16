@@ -41,6 +41,20 @@ function setNestedValue(obj, dotPath, value) {
   current[keys[keys.length - 1]] = value;
 }
 
+function filterRow(record, job) {
+  if (!job.row_filter_enabled || !job.row_filter_expression) return true;
+  const varNames = Object.keys(record);
+  const varValues = varNames.map(k => record[k]);
+  try {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(...varNames, `"use strict"; return !!(${job.row_filter_expression});`);
+    return fn(...varValues);
+  } catch (err) {
+    logger.warn('Error evaluando row_filter_expression', { job_id: job.id, expression: job.row_filter_expression, error: err.message });
+    return true;
+  }
+}
+
 function evaluateExpression(expression, record) {
   // Construye un contexto con todas las columnas de la fila como variables
   const varNames = Object.keys(record);
@@ -108,6 +122,7 @@ function diffWithSnapshot(records, fieldMaps, job, snapshot) {
   const seenReferences = new Set();
 
   for (const record of records) {
+    if (!filterRow(record, job)) continue;
     const reference = String(record[job.key_field] ?? '');
     if (!reference) {
       logger.warn('Registro sin key_field, ignorado', { job_id: job.id, key_field: job.key_field });
@@ -140,6 +155,7 @@ function diffWithSnapshot(records, fieldMaps, job, snapshot) {
 function buildPassthroughItems(records, fieldMaps, job) {
   const items = [];
   for (const record of records) {
+    if (!filterRow(record, job)) continue;
     const op = record[job.op_passthrough_field];
     if (!op) {
       logger.warn('Registro sin op_passthrough_field, ignorado', {

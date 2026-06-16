@@ -269,6 +269,18 @@ function runMigrations(db) {
         db.prepare('ALTER TABLE integration_logs ADD COLUMN request_headers TEXT').run();
       }
     },
+
+    // v8: row_filter en jobs — expresión JS para filtrar filas antes de procesar
+    () => {
+      const addColIfNotExists = (table, col, definition) => {
+        const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols.find(c => c.name === col)) {
+          db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${definition}`).run();
+        }
+      };
+      addColIfNotExists('jobs', 'row_filter_enabled', 'INTEGER NOT NULL DEFAULT 0');
+      addColIfNotExists('jobs', 'row_filter_expression', 'TEXT');
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {
