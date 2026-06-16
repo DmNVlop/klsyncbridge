@@ -25,6 +25,12 @@
     <button onclick="AUTH.logout()" class="text-sm text-slate-400 hover:text-white">Cerrar sesión</button>
   </nav>
 
+  <!-- Draft banner -->
+  <div id="draft-banner" class="hidden bg-amber-900/40 border-b border-amber-500/30 px-6 py-2 flex items-center justify-between text-sm">
+    <span class="text-amber-300">Borrador guardado automáticamente — se restaurará si volvés a esta página.</span>
+    <button onclick="discardDraft()" class="text-amber-400 hover:text-white underline ml-4">Descartar borrador</button>
+  </div>
+
   <main class="max-w-3xl mx-auto px-6 py-8">
     <!-- Steps indicator -->
     <div class="flex items-center gap-2 mb-8">
@@ -162,6 +168,7 @@
         <p class="text-xs font-medium text-slate-400 mb-3">Schema del objeto API — click para mapear</p>
         <div id="schema-fields" class="space-y-1"></div>
       </div>
+      <datalist id="api-schema-fields"></datalist>
 
       <div class="overflow-x-auto">
         <table class="w-full text-sm mb-4">
@@ -288,6 +295,8 @@
       }
 
       updateSchedulePreview();
+
+      if (!editingId) await restoreDraft();
     }
 
     async function loadTables() {
@@ -360,6 +369,9 @@
       const fields = flattenSchema(config.payload_schema, '');
       if (fields.length === 0) { panel.classList.add('hidden'); return; }
 
+      // Populate datalist for free-text input with schema suggestions
+      document.getElementById('api-schema-fields').innerHTML = fields.map(f => `<option value="${f.path}">`).join('');
+
       panel.classList.remove('hidden');
       container.innerHTML = fields.map(f => `
         <div class="flex items-center justify-between py-1 px-2 rounded hover:bg-white/5 group">
@@ -377,6 +389,7 @@
 
     function nextStep(n) {
       if (n > currentStep && !validateStep(currentStep)) return;
+      saveDraft();
       document.getElementById(`step-${currentStep}`).classList.add('hidden');
       updateStepIndicator(currentStep, false);
       currentStep = n;
@@ -423,7 +436,7 @@
       row.className = 'border-b border-white/5';
       row.innerHTML = `
         <td class="py-1 px-2"><select class="inp map-sql">${opts}</select></td>
-        <td class="py-1 px-2"><input type="text" class="inp map-api" placeholder="campo.anidado"></td>
+        <td class="py-1 px-2"><input type="text" class="inp map-api" placeholder="campo.anidado" list="api-schema-fields"></td>
         <td class="py-1 px-2"><select class="inp map-transform">${tOpts}</select></td>
         <td class="py-1 px-2"><input type="text" class="inp map-default" placeholder=""></td>
         <td class="py-1 px-2"><button type="button" onclick="this.closest('tr').remove();updateJsonPreview()" class="text-red-400 hover:text-red-300 px-2">✕</button></td>
@@ -485,6 +498,103 @@
       else el.textContent = `Cron: ${val}`;
     }
 
+    // ── Draft persistence ──────────────────────────────────────────
+    const DRAFT_KEY = 'klsync_draft_job';
+
+    function collectDraft() {
+      return {
+        step: currentStep,
+        fields: {
+          name: document.getElementById('j-name').value,
+          desc: document.getElementById('j-desc').value,
+          conn: document.getElementById('j-conn').value,
+          table: document.getElementById('j-table').value,
+          key: document.getElementById('j-key').value,
+          mode: document.getElementById('j-mode').value,
+          dateField: document.getElementById('j-date-field').value,
+          itemType: document.getElementById('j-item-type').value,
+          opMode: document.getElementById('j-op-mode').value,
+          opPassField: document.getElementById('j-op-passthrough-field').value,
+          sendEmptySync: document.getElementById('j-send-empty-sync').checked,
+          api: document.getElementById('j-api').value,
+          schedType: document.getElementById('j-sched-type').value,
+          schedInterval: document.getElementById('j-sched-val-interval').value,
+          schedCron: document.getElementById('j-sched-val-cron').value,
+          activate: document.getElementById('j-activate').checked,
+        },
+        maps: getMapRows(),
+      };
+    }
+
+    function saveDraft() {
+      if (editingId) return; // edición usa servidor
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(collectDraft()));
+        document.getElementById('draft-banner').classList.remove('hidden');
+      } catch(e) {}
+    }
+
+    function discardDraft() {
+      localStorage.removeItem(DRAFT_KEY);
+      document.getElementById('draft-banner').classList.add('hidden');
+    }
+
+    async function restoreDraft() {
+      if (editingId) return;
+      let draft;
+      try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch(e) {}
+      if (!draft) return;
+
+      const f = draft.fields;
+
+      // Step 1
+      document.getElementById('j-name').value = f.name || '';
+      document.getElementById('j-desc').value = f.desc || '';
+      document.getElementById('j-mode').value = f.mode || 'incremental';
+      document.getElementById('j-send-empty-sync').checked = Boolean(f.sendEmptySync);
+      if (f.itemType) document.getElementById('j-item-type').value = f.itemType;
+      document.getElementById('j-op-mode').value = f.opMode || 'snapshot';
+      togglePassthroughField();
+
+      // Conn → tables → key
+      if (f.conn) {
+        document.getElementById('j-conn').value = f.conn;
+        await loadTables();
+        if (f.table) {
+          document.getElementById('j-table').value = f.table;
+          await loadFields();
+          if (f.key) document.getElementById('j-key').value = f.key;
+          if (f.dateField) document.getElementById('j-date-field').value = f.dateField;
+          toggleDateField();
+          if (f.opPassField) document.getElementById('j-op-passthrough-field').value = f.opPassField;
+        }
+      }
+
+      // Step 2
+      if (f.api) document.getElementById('j-api').value = f.api;
+
+      // Step 3 — field maps
+      if (draft.maps && draft.maps.length) {
+        fieldMaps = draft.maps.map(m => ({ sql: m.sql_field, api: m.api_field, transform: m.transform || 'none', def: m.default_value || '' }));
+        renderMapRows();
+      }
+
+      // Step 4
+      document.getElementById('j-sched-type').value = f.schedType || 'interval';
+      document.getElementById('j-sched-val-interval').value = f.schedInterval || 30;
+      document.getElementById('j-sched-val-cron').value = f.schedCron || '';
+      document.getElementById('j-activate').checked = Boolean(f.activate);
+      renderSchedule();
+      updateSchedulePreview();
+
+      document.getElementById('draft-banner').classList.remove('hidden');
+    }
+
+    // Auto-save on any input change
+    document.addEventListener('input', () => { if (!editingId) saveDraft(); });
+    document.addEventListener('change', () => { if (!editingId) saveDraft(); });
+    // ──────────────────────────────────────────────────────────────
+
     async function saveJob() {
       const maps = getMapRows();
       if (maps.length === 0) { alert('Añade al menos un mapeo de campo'); return; }
@@ -523,6 +633,7 @@
         }
         const jobId = jobRes.data.id || editingId;
         await API.post(`/jobs/${jobId}/field-maps`, maps);
+        discardDraft();
         window.location.href = '/jobs';
       } catch(err){
         alert('Error: '+err.message);
