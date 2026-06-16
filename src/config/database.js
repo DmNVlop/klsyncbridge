@@ -261,6 +261,14 @@ function runMigrations(db) {
       addColIfNotExists('jobs', 'batch_size', 'INTEGER NOT NULL DEFAULT 500');
       addColIfNotExists('jobs', 'batch_concurrency', 'INTEGER NOT NULL DEFAULT 2');
     },
+
+    // v7: request_headers en integration_logs para poder reproducir el cURL exacto
+    () => {
+      const cols = db.prepare('PRAGMA table_info(integration_logs)').all();
+      if (!cols.find(c => c.name === 'request_headers')) {
+        db.prepare('ALTER TABLE integration_logs ADD COLUMN request_headers TEXT').run();
+      }
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {

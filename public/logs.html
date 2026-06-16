@@ -101,10 +101,11 @@
               <th class="text-right px-5 py-3 text-slate-400 font-medium">Res</th>
               <th class="text-left px-5 py-3 text-slate-400 font-medium">HTTP</th>
               <th class="text-left px-5 py-3 text-slate-400 font-medium">Resultado</th>
+              <th class="px-5 py-3"></th>
             </tr>
           </thead>
           <tbody id="int-tbody">
-            <tr><td colspan="10" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+            <tr><td colspan="11" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
           </tbody>
         </table>
       </div>
@@ -309,20 +310,21 @@
         const tbody = document.getElementById('int-tbody');
 
         if (!logs.length) {
-          tbody.innerHTML = '<tr><td colspan="10" class="px-6 py-8 text-center text-slate-500">Sin registros de integración</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="11" class="px-6 py-8 text-center text-slate-500">Sin registros de integración</td></tr>';
         } else {
           tbody.innerHTML = logs.map(l => `
-            <tr onclick="showIntDetail('${l.id}')" class="border-b border-white/5 hover:bg-white/[0.02] cursor-pointer">
-              <td class="px-5 py-3 text-white max-w-[130px] truncate">${l.job_name}</td>
-              <td class="px-5 py-3 text-slate-400 text-xs max-w-[120px] truncate">${l.api_config_name || '—'}</td>
-              <td class="px-5 py-3 font-mono text-xs text-blue-300">${l.method}</td>
-              <td class="px-5 py-3 font-mono text-xs text-slate-400 max-w-[200px] truncate">${truncateUrl(l.url)}</td>
-              <td class="px-5 py-3 text-slate-400 font-mono text-xs whitespace-nowrap">${UI.formatDate(l.created_at)}</td>
-              <td class="px-5 py-3 text-slate-400 font-mono text-xs text-right">${l.duration_ms ?? '—'}</td>
-              <td class="px-5 py-3 text-slate-500 font-mono text-xs text-right">${fmtBytes(l.request_bytes)}</td>
-              <td class="px-5 py-3 text-slate-500 font-mono text-xs text-right">${fmtBytes(l.response_bytes)}</td>
-              <td class="px-5 py-3">${httpBadge(l.response_status)}</td>
-              <td class="px-5 py-3">${outcomeBadge(l.outcome)}</td>
+            <tr class="border-b border-white/5 hover:bg-white/[0.02]">
+              <td class="px-5 py-3 text-white max-w-[130px] truncate cursor-pointer" onclick="showIntDetail('${l.id}')">${l.job_name}</td>
+              <td class="px-5 py-3 text-slate-400 text-xs max-w-[120px] truncate cursor-pointer" onclick="showIntDetail('${l.id}')">${l.api_config_name || '—'}</td>
+              <td class="px-5 py-3 font-mono text-xs text-blue-300 cursor-pointer" onclick="showIntDetail('${l.id}')">${l.method}</td>
+              <td class="px-5 py-3 font-mono text-xs text-slate-400 max-w-[200px] truncate cursor-pointer" onclick="showIntDetail('${l.id}')">${truncateUrl(l.url)}</td>
+              <td class="px-5 py-3 text-slate-400 font-mono text-xs whitespace-nowrap cursor-pointer" onclick="showIntDetail('${l.id}')">${UI.formatDate(l.created_at)}</td>
+              <td class="px-5 py-3 text-slate-400 font-mono text-xs text-right cursor-pointer" onclick="showIntDetail('${l.id}')">${l.duration_ms ?? '—'}</td>
+              <td class="px-5 py-3 text-slate-500 font-mono text-xs text-right cursor-pointer" onclick="showIntDetail('${l.id}')">${fmtBytes(l.request_bytes)}</td>
+              <td class="px-5 py-3 text-slate-500 font-mono text-xs text-right cursor-pointer" onclick="showIntDetail('${l.id}')">${fmtBytes(l.response_bytes)}</td>
+              <td class="px-5 py-3 cursor-pointer" onclick="showIntDetail('${l.id}')">${httpBadge(l.response_status)}</td>
+              <td class="px-5 py-3 cursor-pointer" onclick="showIntDetail('${l.id}')">${outcomeBadge(l.outcome)}</td>
+              <td class="px-5 py-3"><button onclick="copyCurl('${l.id}', this)" class="px-2 py-1 rounded border border-white/10 text-slate-400 hover:text-white hover:border-accent text-xs font-mono whitespace-nowrap transition-colors">⎘ cURL</button></td>
             </tr>
           `).join('');
         }
@@ -383,6 +385,35 @@
         UI.toast(`${res.data.deleted} registros eliminados`);
         loadInt(1);
       } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    async function copyCurl(id, btn) {
+      try {
+        const res = await API.get(`/logs/integrations/${id}`);
+        const l = res.data;
+        const headers = l.request_headers || {};
+        const method = (l.method || 'POST').toUpperCase();
+        const url = l.url;
+
+        let curl = `curl -X ${method} "${url}"`;
+        for (const [k, v] of Object.entries(headers)) {
+          curl += ` \\\n  -H "${k}: ${v}"`;
+        }
+        if (l.request_payload && method !== 'GET') {
+          curl += ` \\\n  -d '${JSON.stringify(l.request_payload)}'`;
+        }
+
+        await navigator.clipboard.writeText(curl);
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copiado';
+        btn.classList.add('text-emerald-400', 'border-emerald-400/30');
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.remove('text-emerald-400', 'border-emerald-400/30');
+        }, 2000);
+      } catch (err) {
+        UI.toast('Error al copiar: ' + err.message, 'error');
+      }
     }
 
     // ===== HELPERS =====

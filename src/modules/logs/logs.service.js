@@ -16,6 +16,7 @@ function serializeIntegrationLog(log) {
   return {
     ...log,
     request_payload: log.request_payload ? JSON.parse(log.request_payload) : null,
+    request_headers: log.request_headers ? (() => { try { return JSON.parse(log.request_headers); } catch { return {}; } })() : {},
     response_body: log.response_body ? (() => { try { return JSON.parse(log.response_body); } catch { return log.response_body; } })() : null,
   };
 }

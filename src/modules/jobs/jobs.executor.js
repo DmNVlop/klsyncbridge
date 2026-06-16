@@ -376,19 +376,21 @@ async function executeJob(jobId) {
           const integrationDuration = Date.now() - integrationStart;
           const requestPayloadStr = JSON.stringify(requestConfig.data);
           const responseBodyStr = integrationResponse?.data ? JSON.stringify(integrationResponse.data) : null;
+          const requestHeadersStr = JSON.stringify(requestConfig.headers || {});
           db.prepare(`
             INSERT INTO integration_logs
               (id, execution_log_id, job_id, job_name, api_config_id, api_config_name,
-               method, url, auth_type, request_payload, request_bytes,
+               method, url, auth_type, request_payload, request_bytes, request_headers,
                response_status, response_body, response_bytes,
                duration_ms, attempt, outcome, error_message, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
           `).run(
             crypto.randomUUID(), logId, jobId, job.name,
             apiConfig.id, apiConfig.name,
             requestConfig.method?.toUpperCase(), requestConfig.url,
             apiConfig.auth_type,
             requestPayloadStr, Buffer.byteLength(requestPayloadStr || ''),
+            requestHeadersStr,
             integrationStatus,
             responseBodyStr, responseBodyStr ? Buffer.byteLength(responseBodyStr) : 0,
             integrationDuration, integrationOutcome, integrationError,
