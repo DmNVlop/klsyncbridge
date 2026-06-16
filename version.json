@@ -1,5 +1,5 @@
 {
-  "version": "1.3.11",
+  "version": "1.3.12",
   "release_date": "2026-06-16",
-  "changelog": "- fix visual de ancho de pantalla"
+  "changelog": "- feat: mostrar versión real en login desde package.jsonAgrega endpoint público GET /api/version que lee package.json sin requerirauth, y login.html lo consume al cargar para reemplazar el hardcoded v1.0.0."
 }
