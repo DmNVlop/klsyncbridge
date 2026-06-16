@@ -67,8 +67,11 @@
         </div>
         <div id="auth-fields"></div>
         <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1">Schema del payload (JSON de ejemplo, opcional)</label>
-          <textarea id="a-payload-schema" rows="6" class="inp font-mono text-xs" placeholder='{"reference":"ABC123","description":"Ejemplo","attributes":{"price":100,"unit":"m2"},"status":"active"}'></textarea>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs font-medium text-slate-400">Schema del payload (JSON de ejemplo, opcional)</label>
+            <button type="button" onclick="formatSchema()" class="text-xs text-slate-500 hover:text-slate-300 px-2 py-0.5 rounded border border-white/10 transition-colors">Formatear</button>
+          </div>
+          <textarea id="a-payload-schema" rows="6" class="inp font-mono text-xs transition-colors" placeholder='{"reference":"ABC123","description":"Ejemplo","attributes":{"price":100,"unit":"m2"},"status":"active"}'></textarea>
           <p id="schema-error" class="hidden text-xs text-red-400 mt-1">JSON inválido</p>
         </div>
         <div id="test-result" class="hidden p-3 rounded-lg text-sm font-mono"></div>
@@ -165,19 +168,61 @@
 
     function getPayloadSchema() {
       const raw = document.getElementById('a-payload-schema').value.trim();
-      const errEl = document.getElementById('schema-error');
-      if (!raw) { errEl.classList.add('hidden'); return null; }
+      if (!raw) return null;
       try {
-        const parsed = JSON.parse(raw);
-        errEl.classList.add('hidden');
-        return parsed;
+        return JSON.parse(raw);
       } catch {
-        errEl.classList.remove('hidden');
         return undefined;
       }
     }
 
-    document.getElementById('a-payload-schema').addEventListener('input', () => getPayloadSchema());
+    const schemaEl = document.getElementById('a-payload-schema');
+    const schemaErrEl = document.getElementById('schema-error');
+
+    function validateSchemaUI(value) {
+      if (!value.trim()) {
+        schemaEl.style.borderColor = '';
+        schemaErrEl.classList.add('hidden');
+        return;
+      }
+      try {
+        JSON.parse(value);
+        schemaEl.style.borderColor = '#10b981';
+        schemaErrEl.classList.add('hidden');
+      } catch (e) {
+        schemaEl.style.borderColor = '#ef4444';
+        const msg = e.message.replace(/^JSON\.parse: /, '').replace(/^SyntaxError: /, '');
+        schemaErrEl.textContent = '⚠ ' + msg;
+        schemaErrEl.classList.remove('hidden');
+      }
+    }
+
+    function formatSchema() {
+      const raw = schemaEl.value.trim();
+      if (!raw) return;
+      try {
+        schemaEl.value = JSON.stringify(JSON.parse(raw), null, 2);
+        validateSchemaUI(schemaEl.value);
+      } catch {
+        validateSchemaUI(raw);
+      }
+    }
+
+    schemaEl.addEventListener('input', () => validateSchemaUI(schemaEl.value));
+
+    schemaEl.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasted = (e.clipboardData || window.clipboardData).getData('text');
+      try {
+        const formatted = JSON.stringify(JSON.parse(pasted), null, 2);
+        schemaEl.value = formatted;
+      } catch {
+        schemaEl.value = pasted;
+      }
+      validateSchemaUI(schemaEl.value);
+    });
+
+    schemaEl.addEventListener('blur', () => formatSchema());
 
     function getFormData() {
       return {
