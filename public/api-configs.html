@@ -152,17 +152,38 @@
     function getAuthConfig() {
       const type = document.getElementById('a-auth-type').value;
       if (type === 'none') return null;
-      if (type === 'bearer') return { token: document.getElementById('ac-token')?.value };
-      if (type === 'api_key') return { key_name: document.getElementById('ac-key-name')?.value, key_value: document.getElementById('ac-key-value')?.value, in: document.getElementById('ac-in')?.value };
-      if (type === 'basic') return { username: document.getElementById('ac-basic-user')?.value, password: document.getElementById('ac-basic-pass')?.value };
-      if (type === 'login') return {
-        login_url: document.getElementById('ac-login-url')?.value,
-        username: document.getElementById('ac-login-user')?.value,
-        password: document.getElementById('ac-login-pass')?.value,
-        token_path: document.getElementById('ac-token-path')?.value,
-        method: 'POST',
-        body: { username: '{{username}}', password: '{{password}}' },
-      };
+      if (type === 'bearer') {
+        const token = document.getElementById('ac-token')?.value;
+        const result = {};
+        if (token) result.token = token;
+        return result;
+      }
+      if (type === 'api_key') {
+        const key_name = document.getElementById('ac-key-name')?.value;
+        const key_value = document.getElementById('ac-key-value')?.value;
+        const result = { key_name, in: document.getElementById('ac-in')?.value };
+        if (key_value) result.key_value = key_value;
+        return result;
+      }
+      if (type === 'basic') {
+        const username = document.getElementById('ac-basic-user')?.value;
+        const password = document.getElementById('ac-basic-pass')?.value;
+        const result = { username };
+        if (password) result.password = password;
+        return result;
+      }
+      if (type === 'login') {
+        const password = document.getElementById('ac-login-pass')?.value;
+        const result = {
+          login_url: document.getElementById('ac-login-url')?.value,
+          username: document.getElementById('ac-login-user')?.value,
+          token_path: document.getElementById('ac-token-path')?.value,
+          method: 'POST',
+          body: { username: '{{username}}', password: '{{password}}' },
+        };
+        if (password) result.password = password;
+        return result;
+      }
       return null;
     }
 
@@ -252,6 +273,31 @@
       document.getElementById('modal').classList.remove('hidden');
     }
 
+    function populateAuthFields(auth_type, auth_config) {
+      if (!auth_config) return;
+      if (auth_type === 'bearer') {
+        const el = document.getElementById('ac-token');
+        if (el) el.placeholder = auth_config.token === '****' ? '(sin cambios)' : '';
+      } else if (auth_type === 'api_key') {
+        const nameEl = document.getElementById('ac-key-name');
+        const inEl = document.getElementById('ac-in');
+        const valEl = document.getElementById('ac-key-value');
+        if (nameEl) nameEl.value = auth_config.key_name || '';
+        if (inEl) inEl.value = auth_config.in || 'header';
+        if (valEl) valEl.placeholder = auth_config.key_value === '****' ? '(sin cambios)' : '';
+      } else if (auth_type === 'basic') {
+        const userEl = document.getElementById('ac-basic-user');
+        if (userEl) userEl.value = auth_config.username || '';
+      } else if (auth_type === 'login') {
+        const urlEl = document.getElementById('ac-login-url');
+        const userEl = document.getElementById('ac-login-user');
+        const pathEl = document.getElementById('ac-token-path');
+        if (urlEl) urlEl.value = auth_config.login_url || '';
+        if (userEl) userEl.value = auth_config.username || '';
+        if (pathEl) pathEl.value = auth_config.token_path || '';
+      }
+    }
+
     function openEdit(id) {
       const c = configs.find(x => x.id === id);
       if (!c) return;
@@ -267,6 +313,7 @@
       document.getElementById('a-payload-schema').value = schemaVal;
       validateSchemaUI(schemaVal);
       renderAuthFields();
+      populateAuthFields(c.auth_type, c.auth_config);
       document.getElementById('test-result').classList.add('hidden');
       document.getElementById('modal').classList.remove('hidden');
     }

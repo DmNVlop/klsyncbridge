@@ -84,7 +84,19 @@ function updateApiConfig(id, data) {
   if (data.headers_json !== undefined) fields.headers_json = data.headers_json ? JSON.stringify(data.headers_json) : null;
   if (data.body_template !== undefined) fields.body_template = data.body_template;
   if (data.auth_type !== undefined) fields.auth_type = data.auth_type;
-  if (data.auth_config !== undefined) fields.auth_config = data.auth_config ? encryptObject(data.auth_config) : null;
+  if (data.auth_config !== undefined) {
+    let authToStore = data.auth_config;
+    if (authToStore && existing.auth_config) {
+      const existingAuth = decryptObject(existing.auth_config);
+      const SENSITIVE = ['key_value', 'token', 'password'];
+      for (const field of SENSITIVE) {
+        if (authToStore[field] === undefined && existingAuth[field]) {
+          authToStore = { ...authToStore, [field]: existingAuth[field] };
+        }
+      }
+    }
+    fields.auth_config = authToStore ? encryptObject(authToStore) : null;
+  }
   if (data.payload_schema !== undefined) fields.payload_schema = data.payload_schema ? JSON.stringify(data.payload_schema) : null;
 
   if (Object.keys(fields).length > 0) {
