@@ -75,6 +75,11 @@ const RETRY = {
   },
 };
 
+const BATCH_DEFAULTS = {
+  SIZE: 500,
+  CONCURRENCY: 2,
+};
+
 const BCRYPT_ROUNDS = 12;
 const JWT_EXPIRY_SECONDS = 8 * 60 * 60; // 8 horas
 const ENCRYPTION_KEY_BYTES = 32;
@@ -96,6 +101,7 @@ module.exports = {
   ROLES,
   ERROR_CATEGORIES,
   RETRY,
+  BATCH_DEFAULTS,
   BCRYPT_ROUNDS,
   JWT_EXPIRY_SECONDS,
   ENCRYPTION_KEY_BYTES,

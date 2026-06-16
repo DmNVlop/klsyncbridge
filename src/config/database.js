@@ -249,6 +249,18 @@ function runMigrations(db) {
       // expression_meta guarda el estado del builder visual (JSON) para restaurar la UI
       addColIfNotExists('field_maps', 'expression_meta', 'TEXT');
     },
+
+    // v6: batch_size y batch_concurrency en jobs para envío por lotes
+    () => {
+      const addColIfNotExists = (table, col, definition) => {
+        const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols.find(c => c.name === col)) {
+          db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${definition}`).run();
+        }
+      };
+      addColIfNotExists('jobs', 'batch_size', 'INTEGER NOT NULL DEFAULT 500');
+      addColIfNotExists('jobs', 'batch_concurrency', 'INTEGER NOT NULL DEFAULT 2');
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {

@@ -13,6 +13,8 @@ function serialize(job) {
     ...job,
     is_active: Boolean(job.is_active),
     send_empty_sync: Boolean(job.send_empty_sync),
+    batch_size: job.batch_size || 500,
+    batch_concurrency: job.batch_concurrency || 2,
   };
 }
 
@@ -35,9 +37,9 @@ function createJob(data) {
   db.prepare(`
     INSERT INTO jobs (id, name, description, connection_id, table_or_view, key_field, sync_mode, date_field,
       api_config_id, schedule_type, schedule_value, is_active,
-      item_type, op_mode, op_passthrough_field, send_empty_sync,
+      item_type, op_mode, op_passthrough_field, send_empty_sync, batch_size, batch_concurrency,
       created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, data.name, data.description || null,
     data.connection_id, data.table_or_view, data.key_field,
@@ -48,6 +50,8 @@ function createJob(data) {
     data.op_mode || 'snapshot',
     data.op_passthrough_field || null,
     data.send_empty_sync ? 1 : 0,
+    data.batch_size || 500,
+    data.batch_concurrency || 2,
     n, n
   );
   return getJob(id);
@@ -70,6 +74,8 @@ function updateJob(id, data) {
   }
   if (data.is_active !== undefined) fields.is_active = data.is_active ? 1 : 0;
   if (data.send_empty_sync !== undefined) fields.send_empty_sync = data.send_empty_sync ? 1 : 0;
+  if (data.batch_size !== undefined) fields.batch_size = parseInt(data.batch_size, 10) || 500;
+  if (data.batch_concurrency !== undefined) fields.batch_concurrency = parseInt(data.batch_concurrency, 10) || 2;
 
   if (Object.keys(fields).length > 0) {
     const setClauses = Object.keys(fields).map(k => `${k} = ?`).join(', ');

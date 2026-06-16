@@ -8,7 +8,7 @@ const { getJob, getFieldMaps, updateJobStatus, getSnapshot } = require('./jobs.s
 const sqlServerService = require('../../services/sqlserver.service');
 const { resolveAuth } = require('../../services/auth-resolver.service');
 const { requestWithRetry } = require('../../services/http.service');
-const { TRANSFORMS, SYNC_MODES, OP_MODES } = require('../../config/constants');
+const { TRANSFORMS, SYNC_MODES, OP_MODES, BATCH_DEFAULTS } = require('../../config/constants');
 const logger = require('../../services/logger.service');
 
 function now() { return new Date().toISOString(); }
@@ -163,6 +163,34 @@ function buildApiPayload(items, itemType) {
   }));
 }
 
+function chunkArray(arr, size) {
+  const chunks = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function yieldToEventLoop() {
+  return new Promise(resolve => setImmediate(resolve));
+}
+
+async function runWithConcurrency(tasks, concurrency) {
+  const results = [];
+  let idx = 0;
+
+  async function worker() {
+    while (idx < tasks.length) {
+      const taskIdx = idx++;
+      results[taskIdx] = await tasks[taskIdx]();
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 function updateSnapshotInDb(db, jobId, items, seenReferences, snapshot) {
   const upsertStmt = db.prepare(`
     INSERT INTO sync_snapshot (job_id, reference, data_hash, last_seen_at)
@@ -259,34 +287,15 @@ async function executeJob(jobId) {
       finalStatus = 'success';
       logger.info(`Job "${job.name}" sin cambios — no se envía request`, { job_id: jobId });
     } else {
-      const apiPayload = buildApiPayload(itemsToProcess, job.item_type);
+      const batchSize = job.batch_size || BATCH_DEFAULTS.SIZE;
+      const batchConcurrency = job.batch_concurrency || BATCH_DEFAULTS.CONCURRENCY;
 
       const authResult = await resolveAuth(apiConfig);
-      const headers = {
+      const baseHeaders = {
         'Content-Type': 'application/json',
         ...authResult.headers,
         ...(apiConfig.headers_json || {}),
       };
-
-      const requestConfig = {
-        method: apiConfig.method,
-        url: `${apiConfig.base_url}${apiConfig.endpoint_path}`,
-        headers,
-        params: authResult.params,
-        data: hasChanges ? apiPayload : [],
-      };
-
-      logger.info(`Job "${job.name}" - payload construido`, {
-        job_id: jobId,
-        log_id: logId,
-        url: requestConfig.url,
-        method: requestConfig.method,
-        items_total: itemsToProcess.length,
-        items_created: recordsCreated,
-        items_updated: recordsUpdated,
-        items_deleted: recordsDeleted,
-        payload_preview: apiPayload.slice(0, 3),
-      });
 
       const onTokenExpired = apiConfig.auth_type === 'login'
         ? async () => {
@@ -296,75 +305,146 @@ async function executeJob(jobId) {
         }
         : null;
 
-      const integrationStart = Date.now();
-      let integrationOutcome = 'success';
-      let integrationError = null;
-      let integrationResponse = null;
-      let integrationStatus = null;
+      const apiPayload = hasChanges ? buildApiPayload(itemsToProcess, job.item_type) : [];
+      const batches = hasChanges ? chunkArray(apiPayload, batchSize) : [[]];
+      const itemBatches = hasChanges ? chunkArray(itemsToProcess, batchSize) : [[]];
 
-      try {
-        integrationResponse = await requestWithRetry(requestConfig, { onTokenExpired });
-        integrationStatus = integrationResponse.status;
-        httpStatus = integrationResponse.status;
-        finalStatus = 'success';
-      } catch (httpErr) {
-        integrationOutcome = 'error';
-        integrationError = httpErr.message;
-        integrationStatus = httpErr.originalError?.response?.status || null;
-        throw httpErr;
-      } finally {
-        const integrationDuration = Date.now() - integrationStart;
-        const requestPayloadStr = JSON.stringify(requestConfig.data);
-        const responseBodyStr = integrationResponse?.data ? JSON.stringify(integrationResponse.data) : null;
-        db.prepare(`
-          INSERT INTO integration_logs
-            (id, execution_log_id, job_id, job_name, api_config_id, api_config_name,
-             method, url, auth_type, request_payload, request_bytes,
-             response_status, response_body, response_bytes,
-             duration_ms, attempt, outcome, error_message, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-        `).run(
-          crypto.randomUUID(), logId, jobId, job.name,
-          apiConfig.id, apiConfig.name,
-          requestConfig.method?.toUpperCase(), requestConfig.url,
-          apiConfig.auth_type,
-          requestPayloadStr, Buffer.byteLength(requestPayloadStr || ''),
-          integrationStatus,
-          responseBodyStr, responseBodyStr ? Buffer.byteLength(responseBodyStr) : 0,
-          integrationDuration, integrationOutcome, integrationError,
-          new Date().toISOString()
-        );
-      }
-
-      const response = integrationResponse;
-
-      logger.info(`Job "${job.name}" - response recibida`, {
+      logger.info(`Job "${job.name}" - enviando en lotes`, {
         job_id: jobId,
         log_id: logId,
-        http_status: response.status,
-        response_body: response.data,
+        url: `${apiConfig.base_url}${apiConfig.endpoint_path}`,
+        items_total: apiPayload.length,
+        batch_size: batchSize,
+        batch_count: batches.length,
+        batch_concurrency: batchConcurrency,
       });
 
-      // Parsear respuesta de ArdisApp si tiene stats
-      if (response.data && typeof response.data === 'object') {
-        detailsJson = JSON.stringify(response.data);
-        // Refinar stats con lo que confirma ArdisApp
-        if (response.data.upserted) {
-          recordsCreated = response.data.upserted.created ?? recordsCreated;
-          recordsUpdated = response.data.upserted.updated ?? recordsUpdated;
+      const allDetails = [];
+      let batchErrors = 0;
+      let lastHttpStatus = null;
+
+      const batchTasks = batches.map((batchPayload, batchIdx) => async () => {
+        await yieldToEventLoop();
+
+        const requestConfig = {
+          method: apiConfig.method,
+          url: `${apiConfig.base_url}${apiConfig.endpoint_path}`,
+          headers: { ...baseHeaders },
+          params: authResult.params,
+          data: batchPayload,
+        };
+
+        const integrationStart = Date.now();
+        let integrationOutcome = 'success';
+        let integrationError = null;
+        let integrationResponse = null;
+        let integrationStatus = null;
+
+        try {
+          integrationResponse = await requestWithRetry(requestConfig, { onTokenExpired });
+          integrationStatus = integrationResponse.status;
+          lastHttpStatus = integrationResponse.status;
+
+          logger.info(`Job "${job.name}" - lote ${batchIdx + 1}/${batches.length} OK`, {
+            job_id: jobId,
+            batch: batchIdx + 1,
+            items: batchPayload.length,
+            http_status: integrationResponse.status,
+            duration_ms: Date.now() - integrationStart,
+          });
+
+          if (integrationResponse.data && typeof integrationResponse.data === 'object') {
+            allDetails.push(integrationResponse.data);
+          }
+
+          return { response: integrationResponse, batchIdx, itemBatch: itemBatches[batchIdx] };
+        } catch (httpErr) {
+          integrationOutcome = 'error';
+          integrationError = httpErr.message;
+          integrationStatus = httpErr.originalError?.response?.status || null;
+          lastHttpStatus = integrationStatus;
+          batchErrors++;
+          logger.error(`Job "${job.name}" - lote ${batchIdx + 1}/${batches.length} falló`, {
+            job_id: jobId,
+            batch: batchIdx + 1,
+            error: httpErr.message,
+          });
+          throw httpErr;
+        } finally {
+          const integrationDuration = Date.now() - integrationStart;
+          const requestPayloadStr = JSON.stringify(requestConfig.data);
+          const responseBodyStr = integrationResponse?.data ? JSON.stringify(integrationResponse.data) : null;
+          db.prepare(`
+            INSERT INTO integration_logs
+              (id, execution_log_id, job_id, job_name, api_config_id, api_config_name,
+               method, url, auth_type, request_payload, request_bytes,
+               response_status, response_body, response_bytes,
+               duration_ms, attempt, outcome, error_message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+          `).run(
+            crypto.randomUUID(), logId, jobId, job.name,
+            apiConfig.id, apiConfig.name,
+            requestConfig.method?.toUpperCase(), requestConfig.url,
+            apiConfig.auth_type,
+            requestPayloadStr, Buffer.byteLength(requestPayloadStr || ''),
+            integrationStatus,
+            responseBodyStr, responseBodyStr ? Buffer.byteLength(responseBodyStr) : 0,
+            integrationDuration, integrationOutcome, integrationError,
+            new Date().toISOString()
+          );
         }
-        if (response.data.deactivated !== undefined) {
-          recordsDeleted = response.data.deactivated ?? recordsDeleted;
+      });
+
+      let batchResults;
+      try {
+        batchResults = await runWithConcurrency(batchTasks, batchConcurrency);
+      } catch (batchErr) {
+        httpStatus = lastHttpStatus;
+        throw batchErr;
+      }
+
+      httpStatus = lastHttpStatus;
+
+      // Acumular stats de respuestas ArdisApp
+      let totalCreatedFromApi = 0, totalUpdatedFromApi = 0, totalDeletedFromApi = 0, totalFailedFromApi = 0;
+      let hasApiStats = false;
+      for (const detail of allDetails) {
+        if (detail.upserted) {
+          hasApiStats = true;
+          totalCreatedFromApi += detail.upserted.created ?? 0;
+          totalUpdatedFromApi += detail.upserted.updated ?? 0;
         }
-        if (Array.isArray(response.data.errors) && response.data.errors.length > 0) {
-          recordsFailed = response.data.errors.length;
-          finalStatus = recordsFailed === itemsToProcess.length ? 'error' : 'partial';
+        if (detail.deactivated !== undefined) {
+          hasApiStats = true;
+          totalDeletedFromApi += detail.deactivated ?? 0;
+        }
+        if (Array.isArray(detail.errors)) {
+          totalFailedFromApi += detail.errors.length;
         }
       }
 
-      // Actualizar snapshot solo en modo snapshot
+      if (hasApiStats) {
+        recordsCreated = totalCreatedFromApi;
+        recordsUpdated = totalUpdatedFromApi;
+        recordsDeleted = totalDeletedFromApi;
+      }
+      if (totalFailedFromApi > 0) {
+        recordsFailed = totalFailedFromApi;
+        finalStatus = recordsFailed >= itemsToProcess.length ? 'error' : 'partial';
+      }
+
+      if (allDetails.length > 0) {
+        detailsJson = JSON.stringify(allDetails.length === 1 ? allDetails[0] : allDetails);
+      }
+
+      // Actualizar snapshot solo en modo snapshot con los lotes exitosos
       if (job.op_mode === OP_MODES.SNAPSHOT && hasChanges) {
-        updateSnapshotInDb(db, jobId, itemsToProcess);
+        const successfulItems = (batchResults || [])
+          .filter(Boolean)
+          .flatMap(r => r.itemBatch || []);
+        if (successfulItems.length > 0) {
+          updateSnapshotInDb(db, jobId, successfulItems);
+        }
       }
 
       // Actualizar sync_state

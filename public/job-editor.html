@@ -150,6 +150,21 @@
             <p class="text-xs text-slate-500 mt-0.5">Si está activo, se hace el request a la API incluso cuando no hay registros nuevos o modificados. Útil para APIs que esperan un heartbeat periódico.</p>
           </div>
         </div>
+        <div class="border-t border-white/5 pt-4">
+          <p class="text-xs font-medium text-slate-400 mb-3">Rendimiento — envío por lotes</p>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Registros por lote</label>
+              <input id="j-batch-size" type="number" min="1" max="5000" value="500" class="inp">
+              <p class="text-xs text-slate-500 mt-1">Registros enviados por request. Menor = menos memoria y CPU por envío.</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Lotes en paralelo</label>
+              <input id="j-batch-concurrency" type="number" min="1" max="10" value="2" class="inp">
+              <p class="text-xs text-slate-500 mt-1">Requests simultáneos. 1 = secuencial (menos carga). Subir si la API lo soporta.</p>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="flex justify-end mt-6">
         <button onclick="nextStep(2)" class="px-5 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Siguiente →</button>
@@ -347,6 +362,8 @@
           togglePassthroughField();
           if (j.op_passthrough_field) document.getElementById('j-op-passthrough-field').value = j.op_passthrough_field;
           document.getElementById('j-send-empty-sync').checked = Boolean(j.send_empty_sync);
+          document.getElementById('j-batch-size').value = j.batch_size || 500;
+          document.getElementById('j-batch-concurrency').value = j.batch_concurrency || 2;
 
           fieldMaps = (mapsRes.data||[]).map(m=>{
             let meta = {};
@@ -808,6 +825,8 @@
           opMode: document.getElementById('j-op-mode').value,
           opPassField: document.getElementById('j-op-passthrough-field').value,
           sendEmptySync: document.getElementById('j-send-empty-sync').checked,
+          batchSize: parseInt(document.getElementById('j-batch-size').value, 10) || 500,
+          batchConcurrency: parseInt(document.getElementById('j-batch-concurrency').value, 10) || 2,
           api: document.getElementById('j-api').value,
           schedType: document.getElementById('j-sched-type').value,
           schedInterval: document.getElementById('j-sched-val-interval').value,
@@ -844,6 +863,8 @@
       document.getElementById('j-desc').value = f.desc || '';
       document.getElementById('j-mode').value = f.mode || 'incremental';
       document.getElementById('j-send-empty-sync').checked = Boolean(f.sendEmptySync);
+      document.getElementById('j-batch-size').value = f.batchSize || 500;
+      document.getElementById('j-batch-concurrency').value = f.batchConcurrency || 2;
       if (f.itemType) document.getElementById('j-item-type').value = f.itemType;
       document.getElementById('j-op-mode').value = f.opMode || 'snapshot';
       togglePassthroughField();
@@ -933,6 +954,8 @@
         op_mode: opMode,
         op_passthrough_field: opMode === 'passthrough' ? (document.getElementById('j-op-passthrough-field').value || null) : null,
         send_empty_sync: document.getElementById('j-send-empty-sync').checked,
+        batch_size: parseInt(document.getElementById('j-batch-size').value, 10) || 500,
+        batch_concurrency: parseInt(document.getElementById('j-batch-concurrency').value, 10) || 2,
       };
 
       const btn = document.getElementById('save-btn');
