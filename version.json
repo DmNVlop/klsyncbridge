@@ -1,5 +1,5 @@
 {
-  "version": "1.3.9",
+  "version": "1.3.10",
   "release_date": "2026-06-16",
-  "changelog": "- Nuevo cambio ux api-config"
+  "changelog": "- feat: mejora en UX y funcionamiento de la creacion de JOBs"
 }
