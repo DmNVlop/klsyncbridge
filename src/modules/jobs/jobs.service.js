@@ -71,7 +71,7 @@ function updateJob(id, data) {
 
   const allowed = ['name', 'description', 'connection_id', 'table_or_view', 'key_field',
     'sync_mode', 'date_field', 'api_config_id', 'schedule_type', 'schedule_value',
-    'item_type', 'op_mode', 'op_passthrough_field', 'row_filter_expression'];
+    'item_type', 'op_mode', 'op_passthrough_field'];
   const fields = {};
   for (const key of allowed) {
     if (data[key] !== undefined) fields[key] = data[key];

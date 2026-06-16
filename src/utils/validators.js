@@ -79,6 +79,10 @@ const jobBaseSchema = z.object({
   op_mode: z.enum(Object.values(OP_MODES)).default('snapshot'),
   op_passthrough_field: z.string().max(200).optional().nullable(),
   send_empty_sync: z.boolean().default(false),
+  batch_size: z.number().int().min(1).max(5000).default(500),
+  batch_concurrency: z.number().int().min(1).max(10).default(2),
+  row_filter_enabled: z.boolean().default(false),
+  row_filter_expression: z.string().max(2000).optional().nullable(),
 });
 
 function passthroughRefine(data) {

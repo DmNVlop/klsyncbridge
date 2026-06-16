@@ -385,9 +385,11 @@
           document.getElementById('j-conn').value = j.connection_id;
           document.getElementById('j-mode').value = j.sync_mode;
           document.getElementById('j-api').value = j.api_config_id;
+          document.getElementById('j-api').dispatchEvent(new Event('change'));
           document.getElementById('j-sched-type').value = j.schedule_type;
           if (j.schedule_type === 'interval') document.getElementById('j-sched-val-interval').value = j.schedule_value;
           else document.getElementById('j-sched-val-cron').value = j.schedule_value;
+          renderSchedule();
           document.getElementById('j-activate').checked = j.is_active;
 
           await loadTables();
