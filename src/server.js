@@ -25,6 +25,16 @@ function createServer() {
   // Archivos estáticos
   app.use(express.static(path.join(__dirname, '../public')));
 
+  // Versión pública (sin auth — usada por login.html)
+  app.get('/api/version', (_req, res) => {
+    try {
+      const pkg = require('../package.json');
+      return res.json({ ok: true, data: { version: pkg.version } });
+    } catch {
+      return res.json({ ok: true, data: { version: '0.0.0' } });
+    }
+  });
+
   // Rutas de la API
   app.use('/api/auth', require('./modules/auth/auth.routes'));
   app.use('/api/users', require('./modules/users/users.routes'));
