@@ -112,7 +112,7 @@
           <div>
             <h3 class="font-medium text-white">${c.name}</h3>
             <p class="text-slate-400 text-sm font-mono mt-0.5">${c.method} ${c.base_url}${c.endpoint_path}</p>
-            <span class="inline-block mt-1 px-2 py-0.5 bg-white/5 text-slate-400 text-xs rounded font-mono">${c.auth_type}</span>
+            <span class="inline-block mt-1 px-2 py-0.5 bg-white/5 text-slate-400 text-xs rounded font-mono">${c.auth_type}</span>${c.payload_schema ? `<span class="inline-block mt-1 ml-1.5 px-2 py-0.5 bg-blue-900/30 text-blue-400 text-xs rounded font-mono" title="${Object.keys(c.payload_schema).slice(0,3).join(', ')}${Object.keys(c.payload_schema).length > 3 ? '…' : ''}">schema</span>` : ''}
           </div>
           <div class="flex items-center gap-2">
             <button onclick="quickTest('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">Test</button>
