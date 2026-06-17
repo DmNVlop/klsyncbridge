@@ -1,5 +1,5 @@
 {
-  "version": "2.1.1",
+  "version": "2.1.2",
   "release_date": "2026-06-17",
-  "changelog": "- fix(connections): handle null password on update for legacy connections"
+  "changelog": "- docs: add user manual and update connection docs for CSV/Excel support"
 }
