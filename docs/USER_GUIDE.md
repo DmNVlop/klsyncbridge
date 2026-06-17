@@ -45,11 +45,11 @@ C:\KLSyncBridge\
 
 **Lo que NO se incluye en la distribución** (se genera automáticamente en los pasos siguientes):
 
-| Carpeta/archivo | Por qué no se copia |
-|---|---|
-| `node_modules\` | Se genera con `npm install` en el paso 1.2 |
-| `data\` | Se genera con `node scripts/setup.js` en el paso 1.3 |
-| `logs\` | Se genera automáticamente al arrancar el servicio |
+| Carpeta/archivo | Por qué no se copia                                  |
+| --------------- | ---------------------------------------------------- |
+| `node_modules\` | Se genera con `npm install` en el paso 1.2           |
+| `data\`         | Se genera con `node scripts/setup.js` en el paso 1.3 |
+| `logs\`         | Se genera automáticamente al arrancar el servicio    |
 
 > **IMPORTANTE — Nunca reutilizar `data\` de otra instalación.** Cada instalación tiene su propia clave de cifrado (`data/encryption.key`). Copiar la carpeta `data\` de un servidor a otro dejará las contraseñas cifradas ilegibles.
 
@@ -72,7 +72,7 @@ Durante el proceso aparecerán las credenciales iniciales:
 ║         CREDENCIALES INICIALES           ║
 ╠══════════════════════════════════════════╣
 ║  Usuario:    admin                       ║
-║  Contraseña: a3f9c12e8b7d4501            ║
+║  Contraseña:             ║
 ╠══════════════════════════════════════════╣
 ║  ⚠️  CAMBIA LA CONTRASEÑA INMEDIATAMENTE  ║
 ╚══════════════════════════════════════════╝
@@ -91,6 +91,7 @@ Entrar a `http://localhost:3847` → menú **Usuarios** → botón **Cambiar con
 ### 1.7 — Crear cuentas para los operarios (opcional)
 
 Si habrá más personas usando el sistema:
+
 - Menú **Usuarios** → **Nuevo usuario**
 - Asignar rol **Administrador** (puede hacer todo) u **Operario** (solo lectura y ejecución manual)
 
@@ -100,48 +101,83 @@ Si habrá más personas usando el sistema:
 
 Esta sección la hace el técnico instalador o el administrador de la empresa. Solo se hace una vez por cada conexión o API que se quiera usar.
 
-### 2.1 — Configurar la conexión a SQL Server
+### 2.1 — Configurar la conexión al origen de datos
 
 Ir a **Conexiones** en el menú lateral → **Nueva conexión**.
 
-| Campo | Qué poner | Ejemplo |
-|---|---|---|
-| Nombre | Nombre descriptivo para identificarla | `Base de datos Producción` |
-| Servidor | IP o nombre del servidor SQL | `192.168.1.10` o `SERVIDOR\SQLEXPRESS` |
-| Puerto | Puerto SQL Server (casi siempre 1433) | `1433` |
-| Base de datos | Nombre exacto de la base de datos | `EmpresaDB` |
-| Usuario | Usuario con permiso de lectura | `syncuser` |
-| Contraseña | Contraseña del usuario SQL | `••••••••` |
-| Cifrar conexión | Activar si el servidor requiere SSL | Depende del servidor |
-| Confiar en certificado | Activar si hay errores de certificado | Activar si es red local |
+El primer campo a completar es el **Tipo de origen**, que determina qué campos adicionales aparecen en el formulario.
 
-Después de completar, hacer clic en **Probar conexión**. Debe aparecer un mensaje verde de éxito. Si no, revisar los datos.
+#### Opción A — SQL Server
 
-Hacer clic en **Guardar**.
+Conecta a una base de datos SQL Server en red.
+
+| Campo                  | Qué poner                             | Ejemplo                                |
+| ---------------------- | ------------------------------------- | -------------------------------------- |
+| Nombre                 | Nombre descriptivo para identificarla | `Base de datos Producción`             |
+| Servidor               | IP o nombre del servidor SQL          | `192.168.1.10` o `SERVIDOR\SQLEXPRESS` |
+| Puerto                 | Puerto SQL Server (casi siempre 1433) | `1433`                                 |
+| Base de datos          | Nombre exacto de la base de datos     | `EmpresaDB`                            |
+| Usuario                | Usuario con permiso de lectura        | `syncuser`                             |
+| Contraseña             | Contraseña del usuario SQL            | `••••••••`                             |
+| Cifrar conexión        | Activar si el servidor requiere SSL   | Depende del servidor                   |
+| Confiar en certificado | Activar si hay errores de certificado | Activar si es red local                |
+
+Hacer clic en **Probar conexión** antes de guardar. Debe aparecer un mensaje verde de éxito.
 
 > La contraseña se guarda cifrada en la base de datos local. Nunca aparece en texto plano.
+
+#### Opción B — CSV
+
+Lee datos desde un archivo de texto con valores separados por delimitador. El archivo debe estar en el servidor donde corre KLSyncBridge.
+
+| Campo            | Qué poner                                           | Ejemplo                     |
+| ---------------- | --------------------------------------------------- | --------------------------- |
+| Nombre           | Nombre descriptivo                                  | `Exportación ERP CSV`       |
+| Ruta del archivo | Ruta absoluta al archivo en el servidor             | `C:\datos\materiales.csv`   |
+| Delimitador      | Carácter separador                                  | `,` `;` o `\t` (tabulador)  |
+| Codificación     | Codificación de caracteres del archivo              | `utf8` / `latin1` / `ascii` |
+| Tiene cabecera   | Si la primera línea contiene los nombres de columna | ✓ activado                  |
+
+> El botón "Probar conexión" no está disponible para CSV. La validación del archivo se hace en la primera ejecución del Job.
+
+#### Opción C — Excel
+
+Lee datos desde un archivo Excel (`.xlsx` o `.xls`). El archivo debe estar en el servidor donde corre KLSyncBridge.
+
+| Campo            | Qué poner                                                  | Ejemplo                  |
+| ---------------- | ---------------------------------------------------------- | ------------------------ |
+| Nombre           | Nombre descriptivo                                         | `Catálogo Excel`         |
+| Ruta del archivo | Ruta absoluta al archivo en el servidor                    | `C:\datos\catalogo.xlsx` |
+| Hoja (Sheet)     | Nombre de la hoja a leer. Si se deja vacío, usa la primera | `Materiales`             |
+| Fila de cabecera | Número de fila donde están los nombres de columna          | `1`                      |
+
+Al crear un Job con una conexión Excel, el sistema lista todas las hojas disponibles del libro para que el usuario elija cuál procesar. Esto permite tener un solo archivo Excel con varias hojas y un Job por cada una.
+
+> El botón "Probar conexión" no está disponible para Excel.
+
+Hacer clic en **Guardar** tras completar el formulario.
 
 ### 2.2 — Configurar la API destino
 
 Ir a **APIs** en el menú → **Nueva API**.
 
-| Campo | Qué poner | Ejemplo |
-|---|---|---|
-| Nombre | Nombre descriptivo | `API Ventas Cloud` |
-| URL base | Dirección raíz del sistema destino | `https://api.miempresa.com` |
-| Endpoint | Ruta específica donde se envían los datos | `/v1/ventas` |
-| Método | Método HTTP que espera la API | `POST` |
-| Tipo de autenticación | Según lo que indique el proveedor | Ver tabla abajo |
+| Campo                 | Qué poner                                 | Ejemplo                     |
+| --------------------- | ----------------------------------------- | --------------------------- |
+| Nombre                | Nombre descriptivo                        | `API Ventas Cloud`          |
+| URL base              | Dirección raíz del sistema destino        | `https://api.miempresa.com` |
+| Endpoint              | Ruta específica donde se envían los datos | `/v1/ventas`                |
+| Método                | Método HTTP que espera la API             | `POST`                      |
+| Tipo de autenticación | Según lo que indique el proveedor         | Ver tabla abajo             |
 
 **Tipos de autenticación disponibles:**
 
-| Tipo | Cuándo usarlo | Campos adicionales |
-|---|---|---|
-| Sin autenticación | APIs públicas o en red interna | — |
-| Bearer Token | La API da un token fijo | Token |
-| API Key | La API usa una clave en header o parámetro | Nombre de la clave, Valor, Ubicación (header/query) |
-| Basic | Usuario y contraseña HTTP estándar | Usuario, Contraseña |
-| Login automático | La API requiere login previo para obtener token | URL de login, Usuario, Contraseña, Ruta del token en la respuesta |
+| Tipo              | Cuándo usarlo                                   | Campos adicionales                                                |
+| ----------------- | ----------------------------------------------- | ----------------------------------------------------------------- |
+| Sin autenticación | APIs públicas o en red interna                  | —                                                                 |
+| Bearer Token      | La API da un token fijo                         | Token                                                             |
+| API Key           | La API usa una clave en header o parámetro      | Nombre de la clave, Valor, Ubicación (header/query)               |
+| Basic             | Usuario y contraseña HTTP estándar              | Usuario, Contraseña                                               |
+| Login automático  | La API requiere login previo para obtener token | URL de login, Usuario, Contraseña, Ruta del token en la respuesta |
 
 Hacer clic en **Probar conexión** para verificar que la API responde. Luego **Guardar**.
 
@@ -165,10 +201,10 @@ Ir a **Tareas** → **Nueva tarea**. Se abre un asistente de 4 pasos.
 
 **Modo de sincronización:**
 
-| Modo | Qué hace | Cuándo usarlo |
-|---|---|---|
-| **Completo** | Envía TODOS los registros cada vez | Tablas pequeñas, o cuando siempre se necesita enviar todo |
-| **Incremental** | Solo envía los registros nuevos o modificados desde la última ejecución | Tablas grandes, sincronizaciones frecuentes |
+| Modo            | Qué hace                                                                | Cuándo usarlo                                             |
+| --------------- | ----------------------------------------------------------------------- | --------------------------------------------------------- |
+| **Completo**    | Envía TODOS los registros cada vez                                      | Tablas pequeñas, o cuando siempre se necesita enviar todo |
+| **Incremental** | Solo envía los registros nuevos o modificados desde la última ejecución | Tablas grandes, sincronizaciones frecuentes               |
 
 > En modo incremental también se puede configurar un **campo de fecha** (ej: `FechaModificacion`) para filtrar por fecha de última actualización.
 
@@ -189,16 +225,16 @@ La interfaz muestra una tabla. Por cada campo de la API destino:
 1. Seleccionar el **campo SQL** de origen (desplegable con todos los campos de la tabla)
 2. Opcionalmente elegir una **transformación:**
 
-| Transformación | Qué hace |
-|---|---|
-| Ninguna | Envía el valor tal cual |
-| MAYÚSCULAS | Convierte texto a mayúsculas |
-| minúsculas | Convierte texto a minúsculas |
-| Recortar espacios | Elimina espacios al inicio y fin |
-| Número | Convierte a número |
-| Booleano | Convierte a true/false |
-| Fecha ISO | Convierte fecha a formato ISO 8601 |
-| Texto | Convierte cualquier valor a texto |
+| Transformación    | Qué hace                           |
+| ----------------- | ---------------------------------- |
+| Ninguna           | Envía el valor tal cual            |
+| MAYÚSCULAS        | Convierte texto a mayúsculas       |
+| minúsculas        | Convierte texto a minúsculas       |
+| Recortar espacios | Elimina espacios al inicio y fin   |
+| Número            | Convierte a número                 |
+| Booleano          | Convierte a true/false             |
+| Fecha ISO         | Convierte fecha a formato ISO 8601 |
+| Texto             | Convierte cualquier valor a texto  |
 
 3. Si el campo no tiene valor en SQL, se puede poner un **valor por defecto**
 
@@ -214,24 +250,24 @@ Define cuándo se ejecuta la tarea automáticamente.
 
 Escribir cada cuántos minutos debe ejecutarse.
 
-| Valor | Resultado |
-|---|---|
-| `15` | Cada 15 minutos |
-| `60` | Cada hora |
-| `120` | Cada 2 horas |
-| `1440` | Una vez al día |
+| Valor  | Resultado       |
+| ------ | --------------- |
+| `15`   | Cada 15 minutos |
+| `60`   | Cada hora       |
+| `120`  | Cada 2 horas    |
+| `1440` | Una vez al día  |
 
 **Opción B — Expresión cron (más control):**
 
 Para programaciones específicas. Ejemplos:
 
-| Expresión | Cuándo se ejecuta |
-|---|---|
-| `0 6 * * *` | Todos los días a las 6:00 AM |
-| `0 6 * * 1-5` | Lunes a viernes a las 6:00 AM |
-| `0 */2 * * *` | Cada 2 horas |
-| `0 8,12,18 * * *` | A las 8:00, 12:00 y 18:00 |
-| `*/30 * * * *` | Cada 30 minutos |
+| Expresión         | Cuándo se ejecuta             |
+| ----------------- | ----------------------------- |
+| `0 6 * * *`       | Todos los días a las 6:00 AM  |
+| `0 6 * * 1-5`     | Lunes a viernes a las 6:00 AM |
+| `0 */2 * * *`     | Cada 2 horas                  |
+| `0 8,12,18 * * *` | A las 8:00, 12:00 y 18:00     |
+| `*/30 * * * *`    | Cada 30 minutos               |
 
 > Si tiene dudas con la expresión cron, usar la opción de intervalo.
 
@@ -266,17 +302,18 @@ Ir a **Logs** en el menú.
 
 Cada fila es una ejecución. Las columnas más importantes:
 
-| Columna | Significado |
-|---|---|
-| Estado | Exitoso / Error / En ejecución |
-| Registros leídos | Cuántos registros leyó de SQL Server |
+| Columna            | Significado                             |
+| ------------------ | --------------------------------------- |
+| Estado             | Exitoso / Error / En ejecución          |
+| Registros leídos   | Cuántos registros leyó de SQL Server    |
 | Registros enviados | Cuántos llegaron correctamente a la API |
-| Duración | Cuánto tardó la ejecución |
-| Error | Si falló, el motivo |
+| Duración           | Cuánto tardó la ejecución               |
+| Error              | Si falló, el motivo                     |
 
 Hacer clic en una fila muestra el detalle completo de esa ejecución.
 
 **Filtros disponibles:**
+
 - Por tarea específica
 - Por estado (exitoso / error)
 - Por rango de fechas
@@ -317,10 +354,10 @@ Interruptor en la columna **Activo**. El usuario no podrá iniciar sesión, pero
 
 Menú **Configuración**.
 
-| Opción | Qué hace |
-|---|---|
-| Puerto de la interfaz | Cambiar el puerto de acceso web (requiere reiniciar el servicio) |
-| Retención de logs | Cuántos días se guardan los registros de ejecución (por defecto 30 días) |
+| Opción                | Qué hace                                                                 |
+| --------------------- | ------------------------------------------------------------------------ |
+| Puerto de la interfaz | Cambiar el puerto de acceso web (requiere reiniciar el servicio)         |
+| Retención de logs     | Cuántos días se guardan los registros de ejecución (por defecto 30 días) |
 
 ---
 
@@ -348,10 +385,10 @@ Los datos en `data/` y los logs en `logs/` se conservan.
 
 ### Archivos importantes — NO borrar
 
-| Archivo | Propósito |
-|---|---|
+| Archivo                | Propósito                               |
+| ---------------------- | --------------------------------------- |
 | `data/klsyncbridge.db` | Base de datos con toda la configuración |
-| `data/encryption.key` | Clave de cifrado de contraseñas |
+| `data/encryption.key`  | Clave de cifrado de contraseñas         |
 
 > Si se pierden estos archivos, se pierde toda la configuración y las credenciales cifradas.
 
@@ -407,11 +444,13 @@ El acceso directo en el Escritorio usa el archivo `public/favicon.ico` como íco
 **Formato requerido:** `.ico` con múltiples resoluciones (16×16, 32×32, 48×48, 256×256 en un solo archivo).
 
 **Cómo crear el `.ico`:**
+
 1. Tener el logo en formato PNG (fondo transparente recomendado)
 2. Convertirlo a `.ico` con alguna herramienta online (buscar "png to ico converter")
 3. Guardar el resultado como `public/favicon.ico` en la carpeta del proyecto
 
 **Cómo aplicarlo:**
+
 - En una instalación nueva: el `instalar.bat` lo toma automáticamente
 - En una instalación existente: ir a **Sistema → Recrear acceso directo** en la interfaz web
 
@@ -432,18 +471,20 @@ El acceso directo en el Escritorio usa el archivo `public/favicon.ico` como íco
 1. Ir a **Logs** → buscar la ejecución fallida → clic para ver el detalle
 2. El mensaje de error indica la causa:
 
-| Mensaje | Causa y solución |
-|---|---|
-| `Error de conexión SQL Server` | El servidor SQL no está disponible o las credenciales cambiaron. Verificar en **Conexiones** → Probar conexión. |
-| `Error de autenticación` | El token o credenciales de la API cambiaron. Actualizar en **APIs**. |
-| `La tarea no tiene mapeos de campos configurados` | Volver al editor de la tarea y completar el Paso 3 (Mapeo). |
-| `Error 401 / 403 de la API` | Las credenciales de la API son incorrectas o expiró el token. Actualizar en **APIs**. |
-| `Error 4XX de la API` | Los datos enviados no son los que espera la API. Revisar el mapeo de campos. |
-| `Error 5XX de la API` | El servidor de la API está fallando. El sistema reintentará automáticamente. |
+| Mensaje                                           | Causa y solución                                                                                                                                                  |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Error de conexión SQL Server`                    | El servidor SQL no está disponible o las credenciales cambiaron. Verificar en **Conexiones** → Probar conexión.                                                   |
+| `Archivo no encontrado`                           | Para conexiones CSV/Excel: la ruta del archivo no existe o el servicio no tiene permisos de lectura. Verificar la ruta y los permisos del archivo en el servidor. |
+| `Error de autenticación`                          | El token o credenciales de la API cambiaron. Actualizar en **APIs**.                                                                                              |
+| `La tarea no tiene mapeos de campos configurados` | Volver al editor de la tarea y completar el Paso 3 (Mapeo).                                                                                                       |
+| `Error 401 / 403 de la API`                       | Las credenciales de la API son incorrectas o expiró el token. Actualizar en **APIs**.                                                                             |
+| `Error 4XX de la API`                             | Los datos enviados no son los que espera la API. Revisar el mapeo de campos.                                                                                      |
+| `Error 5XX de la API`                             | El servidor de la API está fallando. El sistema reintentará automáticamente.                                                                                      |
 
 ### Reintentos automáticos
 
 Ante errores de conexión o errores del servidor de la API, KLSyncBridge reintenta automáticamente:
+
 - 1er reintento: 1 minuto después
 - 2do reintento: 2 minutos después
 - 3er reintento: 4 minutos después
@@ -474,7 +515,7 @@ INSTALACIÓN (una vez, como Administrador):
   4. El navegador se abre solo en http://localhost:3847
 
 CONFIGURACIÓN:
-  5. Menú Conexiones → Nueva conexión → Probar → Guardar
+  5. Menú Conexiones → Nueva conexión (SQL Server / CSV / Excel) → Guardar
   6. Menú APIs       → Nueva API      → Probar → Guardar
   7. Menú Tareas     → Nueva tarea    → Wizard 4 pasos → Guardar
 
