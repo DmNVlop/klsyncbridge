@@ -26,8 +26,7 @@ const updateUserSchema = z.object({
   is_active: z.boolean().optional(),
 });
 
-const createConnectionSchema = z.object({
-  name: z.string().min(1).max(200).trim(),
+const sqlserverConfigSchema = z.object({
   host: z.string().min(1).max(500).trim(),
   port: z.coerce.number().int().min(1).max(65535).default(1433),
   database_name: z.string().min(1).max(200).trim(),
@@ -37,8 +36,58 @@ const createConnectionSchema = z.object({
   trust_cert: z.boolean().default(false),
 });
 
-const updateConnectionSchema = createConnectionSchema.partial().extend({
-  password: z.string().min(1).optional(),
+const csvConfigSchema = z.object({
+  file_path: z.string().min(1).max(1000),
+  delimiter: z.string().min(1).max(5).default(','),
+  encoding: z.string().default('utf8'),
+  has_header: z.boolean().default(true),
+});
+
+const excelConfigSchema = z.object({
+  file_path: z.string().min(1).max(1000),
+  sheet_name: z.string().max(200).optional().nullable(),
+  header_row: z.coerce.number().int().min(1).default(1),
+});
+
+const configSchemas = {
+  sqlserver: sqlserverConfigSchema,
+  csv: csvConfigSchema,
+  excel: excelConfigSchema,
+};
+
+const createConnectionSchema = z.object({
+  name: z.string().min(1).max(200).trim(),
+  source_type: z.enum(['sqlserver', 'csv', 'excel']).default('sqlserver'),
+  config: z.record(z.unknown()).default({}),
+}).superRefine((val, ctx) => {
+  const schema = configSchemas[val.source_type];
+  if (!schema) return;
+  const result = schema.safeParse(val.config);
+  if (!result.success) {
+    result.error.issues.forEach(issue => {
+      ctx.addIssue({ ...issue, path: ['config', ...issue.path] });
+    });
+  } else {
+    val.config = result.data;
+  }
+});
+
+const updateConnectionSchema = z.object({
+  name: z.string().min(1).max(200).trim().optional(),
+  source_type: z.enum(['sqlserver', 'csv', 'excel']).optional(),
+  config: z.record(z.unknown()).optional(),
+}).superRefine((val, ctx) => {
+  if (!val.source_type || !val.config) return;
+  const schema = configSchemas[val.source_type]?.partial();
+  if (!schema) return;
+  const result = schema.safeParse(val.config);
+  if (!result.success) {
+    result.error.issues.forEach(issue => {
+      ctx.addIssue({ ...issue, path: ['config', ...issue.path] });
+    });
+  } else {
+    val.config = result.data;
+  }
 });
 
 const createApiConfigSchema = z.object({
@@ -122,6 +171,9 @@ module.exports = {
   updateUserSchema,
   createConnectionSchema,
   updateConnectionSchema,
+  sqlserverConfigSchema,
+  csvConfigSchema,
+  excelConfigSchema,
   createApiConfigSchema,
   updateApiConfigSchema,
   fieldMapEntrySchema,

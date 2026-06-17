@@ -5,7 +5,7 @@ const { getDb } = require('../../config/database');
 const { getConnectionWithPassword } = require('../connections/connections.service');
 const { getApiConfigRaw } = require('../api-configs/api-configs.service');
 const { getJob, getFieldMaps, updateJobStatus, getSnapshot } = require('./jobs.service');
-const sqlServerService = require('../../services/sqlserver.service');
+const { getSourceService } = require('../../services/sources/index');
 const { resolveAuth } = require('../../services/auth-resolver.service');
 const { requestWithRetry } = require('../../services/http.service');
 const { TRANSFORMS, SYNC_MODES, OP_MODES, BATCH_DEFAULTS } = require('../../config/constants');
@@ -93,23 +93,6 @@ function buildPayload(record, fieldMaps) {
     setNestedValue(payload, map.api_field, value);
   }
   return payload;
-}
-
-function buildQuery(job, syncState) {
-  const table = `[${job.table_or_view}]`;
-
-  if (job.sync_mode === SYNC_MODES.FULL) {
-    return { query: `SELECT * FROM ${table}`, params: {} };
-  }
-
-  if (job.date_field && syncState?.last_sync_at) {
-    return {
-      query: `SELECT * FROM ${table} WHERE [${job.date_field}] > @lastSync ORDER BY [${job.date_field}] ASC`,
-      params: { lastSync: { type: require('mssql').DateTime, value: new Date(syncState.last_sync_at) } },
-    };
-  }
-
-  return { query: `SELECT * FROM ${table}`, params: {} };
 }
 
 function computeHash(payload) {
@@ -259,6 +242,19 @@ async function executeJob(jobId) {
 
   try {
     const conn = getConnectionWithPassword(job.connection_id);
+
+    if (conn.source_type === 'sqlserver' && conn.config && Object.keys(conn.config).length === 0) {
+      conn.config = {
+        host: conn.host,
+        port: conn.port,
+        database_name: conn.database_name,
+        username: conn.username,
+        password: conn.password,
+        encrypt: conn.encrypt,
+        trust_cert: conn.trust_cert,
+      };
+    }
+
     const apiConfig = getApiConfigRaw(job.api_config_id);
     const fieldMaps = getFieldMaps(jobId);
 
@@ -271,9 +267,15 @@ async function executeJob(jobId) {
     }
 
     const syncState = db.prepare('SELECT * FROM sync_state WHERE job_id = ?').get(jobId);
-    const { query, params } = buildQuery(job, syncState);
 
-    const records = await sqlServerService.executeQuery(conn, query, params);
+    const sourceSvc = getSourceService(conn.source_type || 'sqlserver');
+    const jobContext = {
+      table_or_view: job.table_or_view,
+      sync_mode: job.sync_mode,
+      date_field: job.date_field,
+      syncState,
+    };
+    const records = await sourceSvc.getRecords(conn.config || conn, jobContext);
     recordsRead = records.length;
     logger.info(`Job "${job.name}" - registros leídos: ${recordsRead}`, { job_id: jobId });
 

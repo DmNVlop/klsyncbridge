@@ -51,14 +51,16 @@ function createTables(db) {
     CREATE TABLE IF NOT EXISTS connections (
       id            TEXT PRIMARY KEY,
       name          TEXT NOT NULL,
-      host          TEXT NOT NULL,
+      host          TEXT,
       port          INTEGER NOT NULL DEFAULT 1433,
-      database_name TEXT NOT NULL,
-      username      TEXT NOT NULL,
-      password      TEXT NOT NULL,
+      database_name TEXT,
+      username      TEXT,
+      password      TEXT,
       encrypt       INTEGER NOT NULL DEFAULT 1,
       trust_cert    INTEGER NOT NULL DEFAULT 0,
       is_active     INTEGER NOT NULL DEFAULT 1,
+      source_type   TEXT NOT NULL DEFAULT 'sqlserver',
+      config        TEXT NOT NULL DEFAULT '{}',
       created_at    TEXT NOT NULL,
       updated_at    TEXT NOT NULL
     );
@@ -280,6 +282,19 @@ function runMigrations(db) {
       };
       addColIfNotExists('jobs', 'row_filter_enabled', 'INTEGER NOT NULL DEFAULT 0');
       addColIfNotExists('jobs', 'row_filter_expression', 'TEXT');
+    },
+
+    // v9: multi-source connections — source_type y config
+    () => {
+      const addColIfNotExists = (table, col, definition) => {
+        const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols.find(c => c.name === col)) {
+          db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${definition}`).run();
+        }
+      };
+      addColIfNotExists('connections', 'source_type', "TEXT NOT NULL DEFAULT 'sqlserver'");
+      addColIfNotExists('connections', 'config', "TEXT NOT NULL DEFAULT '{}'");
+      db.prepare("UPDATE connections SET source_type = 'sqlserver' WHERE source_type IS NULL").run();
     },
   ];
 

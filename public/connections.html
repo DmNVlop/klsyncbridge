@@ -12,7 +12,7 @@
 <body>
   <main class="max-w-[1360px] mx-auto px-6 py-8">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-semibold text-white">Conexiones SQL Server</h1>
+      <h1 class="text-2xl font-semibold text-white">Conexiones de Datos</h1>
       <button onclick="openModal()" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
         + Nueva conexión
       </button>
@@ -30,28 +30,42 @@
         <h2 id="modal-title" class="font-medium text-white">Nueva conexión</h2>
         <button onclick="closeModal()" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
       </div>
-      <form id="conn-form" class="px-6 py-5 space-y-4">
+      <form id="conn-form" class="px-6 py-5 space-y-4 max-h-[80vh] overflow-y-auto">
         <input type="hidden" id="conn-id">
-        <div class="grid grid-cols-2 gap-4">
-          <div class="col-span-2">
-            <label class="block text-xs font-medium text-slate-400 mb-1">Nombre</label>
-            <input id="f-name" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent" placeholder="ERP Principal">
-          </div>
+
+        <!-- Name — always visible -->
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Nombre</label>
+          <input id="f-name" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent" placeholder="ERP Principal">
+        </div>
+
+        <!-- Source type selector — always visible -->
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Tipo de origen</label>
+          <select id="f-source-type" onchange="onSourceTypeChange()" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+            <option value="sqlserver">SQL Server</option>
+            <option value="csv">CSV</option>
+            <option value="excel">Excel</option>
+          </select>
+        </div>
+
+        <!-- SQL Server fields -->
+        <div id="fields-sqlserver" class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Host / IP</label>
-            <input id="f-host" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="192.168.1.100">
+            <input id="f-host" type="text" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="192.168.1.100">
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Puerto</label>
-            <input id="f-port" type="number" value="1433" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent">
+            <input id="f-port" type="number" value="1433" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent">
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Base de datos</label>
-            <input id="f-db" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="MiERP">
+            <input id="f-db" type="text" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="MiERP">
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-400 mb-1">Usuario SQL</label>
-            <input id="f-user" type="text" required class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="sa">
+            <input id="f-user" type="text" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="sa">
           </div>
           <div class="col-span-2">
             <label class="block text-xs font-medium text-slate-400 mb-1">Contraseña</label>
@@ -67,10 +81,50 @@
           </div>
         </div>
 
+        <!-- CSV fields -->
+        <div id="fields-csv" class="hidden grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-400 mb-1">Ruta del archivo</label>
+            <input id="f-csv-path" type="text" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="C:\datos\archivo.csv">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Separador</label>
+            <input id="f-csv-delimiter" type="text" value="," maxlength="5" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Encoding</label>
+            <select id="f-csv-encoding" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm focus:outline-none focus:border-accent">
+              <option value="utf8">utf8</option>
+              <option value="latin1">latin1</option>
+              <option value="ascii">ascii</option>
+            </select>
+          </div>
+          <div class="col-span-2 flex items-center gap-3">
+            <input id="f-csv-header" type="checkbox" checked class="rounded">
+            <label for="f-csv-header" class="text-sm text-slate-300">Tiene encabezado</label>
+          </div>
+        </div>
+
+        <!-- Excel fields -->
+        <div id="fields-excel" class="hidden grid grid-cols-2 gap-4">
+          <div class="col-span-2">
+            <label class="block text-xs font-medium text-slate-400 mb-1">Ruta del archivo</label>
+            <input id="f-excel-path" type="text" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="C:\datos\libro.xlsx">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Nombre de hoja</label>
+            <input id="f-excel-sheet" type="text" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent" placeholder="Hoja1 (vacío = primera hoja)">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Fila de encabezado</label>
+            <input id="f-excel-headerrow" type="number" value="1" class="w-full px-3 py-2 rounded-lg bg-base border border-white/10 text-white text-sm font-mono focus:outline-none focus:border-accent">
+          </div>
+        </div>
+
         <div id="test-result" class="hidden p-3 rounded-lg text-sm font-mono"></div>
 
         <div class="flex items-center gap-3 pt-2">
-          <button type="button" onclick="testConnection()" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white text-sm transition-colors">
+          <button type="button" id="btn-test" onclick="testConnection()" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white text-sm transition-colors">
             Probar conexión
           </button>
           <div class="flex-1"></div>
@@ -90,6 +144,18 @@
     let connections = [];
     let editingId = null;
 
+    const SOURCE_TYPE_LABELS = {
+      sqlserver: 'SQL Server',
+      csv: 'CSV',
+      excel: 'Excel',
+    };
+
+    const SOURCE_TYPE_BADGE_COLORS = {
+      sqlserver: 'bg-blue-900/40 text-blue-300 border-blue-500/30',
+      csv: 'bg-emerald-900/40 text-emerald-300 border-emerald-500/30',
+      excel: 'bg-amber-900/40 text-amber-300 border-amber-500/30',
+    };
+
     async function load() {
       try {
         const res = await API.get('/connections');
@@ -106,20 +172,40 @@
         el.innerHTML = '<div class="bg-surface rounded-xl border border-white/5 p-8 text-center text-slate-400">No hay conexiones. Crea una para comenzar.</div>';
         return;
       }
-      el.innerHTML = connections.map(c => `
-        <div class="bg-surface rounded-xl border border-white/5 p-5 flex items-center justify-between">
-          <div>
-            <h3 class="font-medium text-white">${c.name}</h3>
-            <p class="text-slate-400 text-sm font-mono mt-0.5">${c.host}:${c.port} / ${c.database_name}</p>
-            <p class="text-slate-500 text-xs mt-0.5">Usuario: ${c.username}</p>
+      el.innerHTML = connections.map(c => {
+        const type = c.source_type || 'sqlserver';
+        const label = SOURCE_TYPE_LABELS[type] || type;
+        const badgeColor = SOURCE_TYPE_BADGE_COLORS[type] || 'bg-white/5 text-slate-300 border-white/10';
+
+        let subtitle = '';
+        if (type === 'sqlserver') {
+          subtitle = `${c.host || ''}:${c.port || ''} / ${c.database_name || ''}`;
+        } else if (type === 'csv') {
+          subtitle = c.config?.file_path || 'CSV';
+        } else if (type === 'excel') {
+          subtitle = c.config?.file_path || 'Excel';
+        }
+
+        const showTest = type === 'sqlserver';
+
+        return `
+          <div class="bg-surface rounded-xl border border-white/5 p-5 flex items-center justify-between">
+            <div class="flex items-start gap-3">
+              <span class="mt-0.5 inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${badgeColor}">${label}</span>
+              <div>
+                <h3 class="font-medium text-white">${c.name}</h3>
+                <p class="text-slate-400 text-sm font-mono mt-0.5">${subtitle}</p>
+                ${type === 'sqlserver' ? `<p class="text-slate-500 text-xs mt-0.5">Usuario: ${c.username || ''}</p>` : ''}
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              ${showTest ? `<button onclick="quickTest('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs transition-colors">Test</button>` : ''}
+              <button onclick="openEdit('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs transition-colors">Editar</button>
+              <button onclick="deleteConn('${c.id}','${c.name.replace(/'/g,"\\'")}');" class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/20 text-xs transition-colors">Eliminar</button>
+            </div>
           </div>
-          <div class="flex items-center gap-2">
-            <button onclick="quickTest('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs transition-colors">Test</button>
-            <button onclick="openEdit('${c.id}')" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs transition-colors">Editar</button>
-            <button onclick="deleteConn('${c.id}','${c.name.replace(/'/g,"\\'")}');" class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-900/20 text-xs transition-colors">Eliminar</button>
-          </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     async function quickTest(id) {
@@ -129,19 +215,51 @@
       } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
     }
 
+    function onSourceTypeChange() {
+      const type = document.getElementById('f-source-type').value;
+      document.getElementById('fields-sqlserver').classList.toggle('hidden', type !== 'sqlserver');
+      document.getElementById('fields-csv').classList.toggle('hidden', type !== 'csv');
+      document.getElementById('fields-excel').classList.toggle('hidden', type !== 'excel');
+      // Only show "Probar conexión" for SQL Server
+      document.getElementById('btn-test').classList.toggle('hidden', type !== 'sqlserver');
+    }
+
     function openModal(conn = null) {
       editingId = conn?.id || null;
       document.getElementById('modal-title').textContent = conn ? 'Editar conexión' : 'Nueva conexión';
       document.getElementById('conn-id').value = conn?.id || '';
       document.getElementById('f-name').value = conn?.name || '';
-      document.getElementById('f-host').value = conn?.host || '';
-      document.getElementById('f-port').value = conn?.port || 1433;
-      document.getElementById('f-db').value = conn?.database_name || '';
-      document.getElementById('f-user').value = conn?.username || '';
+
+      const type = conn?.source_type || 'sqlserver';
+      document.getElementById('f-source-type').value = type;
+
+      // SQL Server fields
+      document.getElementById('f-host').value = conn?.host || conn?.config?.host || '';
+      document.getElementById('f-port').value = conn?.port || conn?.config?.port || 1433;
+      document.getElementById('f-db').value = conn?.database_name || conn?.config?.database_name || '';
+      document.getElementById('f-user').value = conn?.username || conn?.config?.username || '';
       document.getElementById('f-pass').value = '';
-      document.getElementById('f-encrypt').checked = conn ? conn.encrypt : true;
-      document.getElementById('f-trust').checked = conn?.trust_cert || false;
+      document.getElementById('f-encrypt').checked = conn
+        ? (conn.encrypt !== undefined ? conn.encrypt : (conn.config?.encrypt !== undefined ? conn.config.encrypt : true))
+        : true;
+      document.getElementById('f-trust').checked = conn
+        ? (conn.trust_cert || conn.config?.trust_cert || false)
+        : false;
+
+      // CSV fields
+      const csvCfg = conn?.config || {};
+      document.getElementById('f-csv-path').value = csvCfg.file_path || '';
+      document.getElementById('f-csv-delimiter').value = csvCfg.delimiter !== undefined ? csvCfg.delimiter : ',';
+      document.getElementById('f-csv-encoding').value = csvCfg.encoding || 'utf8';
+      document.getElementById('f-csv-header').checked = csvCfg.has_header !== undefined ? csvCfg.has_header : true;
+
+      // Excel fields
+      document.getElementById('f-excel-path').value = csvCfg.file_path || '';
+      document.getElementById('f-excel-sheet').value = csvCfg.sheet_name || '';
+      document.getElementById('f-excel-headerrow').value = csvCfg.header_row !== undefined ? csvCfg.header_row : 1;
+
       document.getElementById('test-result').classList.add('hidden');
+      onSourceTypeChange();
       document.getElementById('modal').classList.remove('hidden');
     }
 
@@ -177,16 +295,50 @@
     }
 
     function getFormData() {
-      return {
+      const type = document.getElementById('f-source-type').value;
+      const base = {
         name: document.getElementById('f-name').value.trim(),
-        host: document.getElementById('f-host').value.trim(),
-        port: parseInt(document.getElementById('f-port').value, 10),
-        database_name: document.getElementById('f-db').value.trim(),
-        username: document.getElementById('f-user').value.trim(),
-        password: document.getElementById('f-pass').value,
-        encrypt: document.getElementById('f-encrypt').checked,
-        trust_cert: document.getElementById('f-trust').checked,
+        source_type: type,
       };
+
+      if (type === 'sqlserver') {
+        const password = document.getElementById('f-pass').value;
+        const config = {
+          host: document.getElementById('f-host').value.trim(),
+          port: parseInt(document.getElementById('f-port').value, 10),
+          database_name: document.getElementById('f-db').value.trim(),
+          username: document.getElementById('f-user').value.trim(),
+          encrypt: document.getElementById('f-encrypt').checked,
+          trust_cert: document.getElementById('f-trust').checked,
+        };
+        if (password) config.password = password;
+        return { ...base, config };
+      }
+
+      if (type === 'csv') {
+        return {
+          ...base,
+          config: {
+            file_path: document.getElementById('f-csv-path').value.trim(),
+            delimiter: document.getElementById('f-csv-delimiter').value,
+            encoding: document.getElementById('f-csv-encoding').value,
+            has_header: document.getElementById('f-csv-header').checked,
+          },
+        };
+      }
+
+      if (type === 'excel') {
+        return {
+          ...base,
+          config: {
+            file_path: document.getElementById('f-excel-path').value.trim(),
+            sheet_name: document.getElementById('f-excel-sheet').value.trim(),
+            header_row: parseInt(document.getElementById('f-excel-headerrow').value, 10),
+          },
+        };
+      }
+
+      return base;
     }
 
     document.getElementById('conn-form').addEventListener('submit', async (e) => {
