@@ -48,6 +48,9 @@ function buildNav({ showUsername = false } = {}) {
       if (el) el.textContent = user.username;
     }
   }
+
+  // Check update en background — 2 veces al día, no bloquea
+  setTimeout(checkUpdateBackground, 2000);
 }
 
 // ─── Toast ─────────────────────────────────────────────────────────────────────
@@ -107,4 +110,102 @@ function formatDate(d) {
   return new Date(d).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-window.UI = { buildNav, toast, confirmDialog, statusBadge, formatDate };
+// ─── Update checker ───────────────────────────────────────────────────────────
+
+const UPDATE_CHECK_INTERVAL = 12 * 60 * 60 * 1000; // 12 horas
+const LS_LAST_CHECK = 'sb_update_last_check';
+const LS_PENDING_VER = 'sb_update_pending'; // versión pendiente de instalar
+
+function _hasPendingUpdate() {
+  return !!localStorage.getItem(LS_PENDING_VER);
+}
+
+function _getPendingVersion() {
+  return localStorage.getItem(LS_PENDING_VER);
+}
+
+// Pone el punto amber en el link "Sistema" del navbar
+function _applyNavBadge() {
+  const navLinks = document.querySelectorAll('nav a[href="/system"]');
+  navLinks.forEach(a => {
+    if (a.querySelector('._upd_dot')) return;
+    a.style.position = 'relative';
+    const dot = document.createElement('span');
+    dot.className = '_upd_dot';
+    dot.style.cssText = 'position:absolute;top:2px;right:2px;width:7px;height:7px;border-radius:50%;background:#f59e0b;border:1.5px solid #0f1117';
+    a.appendChild(dot);
+  });
+}
+
+function _removeNavBadge() {
+  document.querySelectorAll('._upd_dot').forEach(d => d.remove());
+}
+
+function _showUpdateBanner(version) {
+  if (document.getElementById('_ui_update_banner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = '_ui_update_banner';
+  banner.className = 'fixed top-4 right-4 z-[9997] max-w-sm w-full bg-amber-900/90 border border-amber-500/40 rounded-2xl shadow-2xl p-4';
+  banner.innerHTML = `
+    <div class="flex items-start gap-3">
+      <div class="w-2 h-2 rounded-full bg-amber-400 mt-1.5 flex-shrink-0 animate-pulse"></div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-amber-300">Nueva versión disponible</p>
+        <p class="text-xs text-amber-400/80 mt-0.5 font-mono">v${version}</p>
+        <a href="/system" class="inline-block mt-2 text-xs text-amber-300 underline underline-offset-2 hover:text-white">Ir a Sistema para actualizar →</a>
+      </div>
+      <button onclick="document.getElementById('_ui_update_banner').remove()" class="text-amber-500 hover:text-amber-300 text-lg leading-none flex-shrink-0">×</button>
+    </div>`;
+  document.body.appendChild(banner);
+}
+
+// Activa todos los indicadores visuales de update pendiente
+function _activateUpdateIndicators(version) {
+  localStorage.setItem(LS_PENDING_VER, version);
+  _applyNavBadge();
+  _showUpdateBanner(version);
+
+  // Punto en la sección de Actualización dentro de system.html (si existe)
+  const sectionDot = document.getElementById('_update_section_dot');
+  if (sectionDot) sectionDot.classList.remove('hidden');
+}
+
+// Limpia todos los indicadores (llamar al actualizar o al entrar a /system)
+function clearUpdateIndicators() {
+  localStorage.removeItem(LS_PENDING_VER);
+  localStorage.removeItem(LS_LAST_CHECK);
+  _removeNavBadge();
+  const banner = document.getElementById('_ui_update_banner');
+  if (banner) banner.remove();
+  const sectionDot = document.getElementById('_update_section_dot');
+  if (sectionDot) sectionDot.classList.add('hidden');
+}
+
+async function checkUpdateBackground() {
+  if (!AUTH.getToken()) return;
+
+  // Si ya hay una pendiente guardada → restaurar indicadores sin llamar al API
+  if (_hasPendingUpdate()) {
+    _applyNavBadge();
+    _showUpdateBanner(_getPendingVersion());
+    return;
+  }
+
+  const now       = Date.now();
+  const lastCheck = parseInt(localStorage.getItem(LS_LAST_CHECK) || '0', 10);
+  if (now - lastCheck < UPDATE_CHECK_INTERVAL) return;
+
+  localStorage.setItem(LS_LAST_CHECK, now);
+
+  try {
+    const res  = await API.get('/system/check-update');
+    const data = res.data;
+    if (!data.hasUpdate) return;
+    _activateUpdateIndicators(data.latest);
+  } catch {
+    // silencioso — es background
+  }
+}
+
+window.UI = { buildNav, toast, confirmDialog, statusBadge, formatDate, checkUpdateBackground, clearUpdateIndicators };

@@ -133,11 +133,16 @@
     </div>
 
     <!-- Actualización de la aplicación -->
-    <div class="bg-surface rounded-xl border border-white/5 p-6">
+    <div class="bg-surface rounded-xl border border-white/5 p-6" id="update-section">
       <div class="flex items-center justify-between mb-4">
-        <div>
-          <h2 class="font-medium text-white">Actualización</h2>
-          <p class="text-xs text-slate-500 mt-0.5">Versión actual: <span id="current-version" class="font-mono text-slate-300">—</span></p>
+        <div class="flex items-center gap-2">
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="font-medium text-white">Actualización</h2>
+              <span id="_update_section_dot" class="hidden w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" title="Actualización pendiente"></span>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Versión actual: <span id="current-version" class="font-mono text-slate-300">—</span></p>
+          </div>
         </div>
         <button onclick="checkUpdate()" id="btn-check-update" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white text-xs transition-colors">
           Buscar actualización
@@ -218,6 +223,10 @@
       document.getElementById('main-content').classList.remove('hidden');
       loadStatus();
       loadPrivilege();
+      // Restaurar punto de sección si hay update pendiente (antes de que clearUpdateIndicators lo limpie al actualizar)
+      if (localStorage.getItem('sb_update_pending')) {
+        document.getElementById('_update_section_dot').classList.remove('hidden');
+      }
     }
 
     let rawVisible = false;
@@ -444,6 +453,7 @@
       }
 
       if (finished) {
+        UI.clearUpdateIndicators();
         showUpdateState('restarting');
         waitForRestart();
       } else {
