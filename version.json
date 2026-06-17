@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "release_date": "2026-06-17",
-  "changelog": "- feat(connections): agregar soporte multi-fuente — CSV y Excel"
+  "changelog": "- feat(job-editor): fix filter state consistency and save correctness"
 }
