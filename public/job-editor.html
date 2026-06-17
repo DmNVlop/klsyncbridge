@@ -310,7 +310,7 @@
             <p class="text-xs text-slate-500 mb-2">Escribí cualquier expresión JavaScript. Devuelve <span class="font-mono">true</span> para incluir la fila, <span class="font-mono">false</span> para omitirla.</p>
             <textarea id="j-filter-expression" class="inp font-mono text-xs w-full" rows="3"
               placeholder="ESPESOR > 4 || CATEGORIA == &quot;Sheet&quot;"
-              oninput="syncFilterBadge();updateJsonPreview();"></textarea>
+              oninput="syncFilterPreview();updateJsonPreview();"></textarea>
             <div class="mt-2 space-y-1.5">
               <p class="text-xs text-slate-500">Operadores: <span class="font-mono">&gt; &lt; &gt;= &lt;= == != && || !</span></p>
               <p class="text-xs text-slate-600">Anidamientos: <span class="font-mono">(ESPESOR >= 18 && TIPO == "MDF") || ACTIVO == 0</span></p>
@@ -897,12 +897,15 @@
       simple.style.display = isAdv ? '' : 'none';
       adv.style.display    = isAdv ? 'none' : '';
       if (!isAdv) {
+        // simple → adv: volcar expresión del builder visual al textarea (si el builder tiene condiciones)
         const expr = buildFilterExpression();
         if (expr) document.getElementById('j-filter-expression').value = expr;
+        // Si el textarea ya tenía algo (cargado de BD/draft), no pisarlo
       }
-      // Al volver al builder simple, re-evaluar hint "sin condiciones"
+      // adv → simple: NO tocar el textarea — la expresión sigue guardada para el save
+      // Re-evaluar hint "sin condiciones"
       const noConditions = document.getElementById('filter-no-conditions');
-      if (noConditions && isAdv) {
+      if (noConditions) {
         const container = document.getElementById('filter-conditions');
         noConditions.style.display = container.children.length === 0 ? '' : 'none';
       }
@@ -967,7 +970,6 @@
       if (expr) {
         preview.textContent = expr;
         wrap.classList.remove('hidden');
-        if (!isAdv) document.getElementById('j-filter-expression').value = expr;
       } else {
         wrap.classList.add('hidden');
       }
@@ -990,9 +992,16 @@
     }
 
     function getFilterData() {
+      const adv = document.getElementById('filter-builder-adv');
+      const isAdv = adv.style.display !== 'none';
+      const expr = isAdv
+        ? document.getElementById('j-filter-expression').value.trim()
+        : buildFilterExpression();
+      // Sincronizar textarea como fuente única para draft/save
+      if (expr) document.getElementById('j-filter-expression').value = expr;
       return {
         row_filter_enabled: document.getElementById('j-filter-enabled').checked,
-        row_filter_expression: document.getElementById('j-filter-expression').value.trim() || null,
+        row_filter_expression: expr || null,
       };
     }
 
@@ -1016,6 +1025,7 @@
         // Switch to advanced mode since we have expression but no conditions
         document.getElementById('filter-builder-simple').style.display = 'none';
         document.getElementById('filter-builder-adv').style.display = '';
+        syncFilterPreview();
       }
       syncFilterBadge();
     }
@@ -1176,7 +1186,7 @@
       renderSchedule();
       updateSchedulePreview();
 
-      if (f.filterEnabled || f.filterExpression) {
+      if (f.filterEnabled || f.filterExpression || (f.filterConditions && f.filterConditions.length)) {
         setFilterData(f.filterEnabled, f.filterExpression, f.filterConditions);
       }
 
@@ -1214,8 +1224,7 @@
         send_empty_sync: document.getElementById('j-send-empty-sync').checked,
         batch_size: parseInt(document.getElementById('j-batch-size').value, 10) || 500,
         batch_concurrency: parseInt(document.getElementById('j-batch-concurrency').value, 10) || 2,
-        row_filter_enabled: document.getElementById('j-filter-enabled').checked,
-        row_filter_expression: document.getElementById('j-filter-expression').value.trim() || null,
+        ...getFilterData(),
       };
 
       const btn = document.getElementById('save-btn');
