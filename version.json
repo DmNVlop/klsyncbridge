@@ -1,5 +1,5 @@
 {
-  "version": "1.5.2",
+  "version": "1.6.0",
   "release_date": "2026-06-17",
-  "changelog": "- feat(setup): agregar setup.bat para instalación desde cero con ZIP local o descarga automática"
+  "changelog": "- feat(system): detección automática de actualizaciones con indicadores visuales persistentes"
 }
