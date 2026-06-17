@@ -1,5 +1,5 @@
 {
-  "version": "1.5.1",
-  "release_date": "2026-06-16",
-  "changelog": "- fix(logs): mejorar contraste de stat cards en modal de ejecución"
+  "version": "1.5.2",
+  "release_date": "2026-06-17",
+  "changelog": "- feat(setup): agregar setup.bat para instalación desde cero con ZIP local o descarga automática"
 }
