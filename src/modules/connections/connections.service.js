@@ -184,7 +184,8 @@ function updateConnection(id, data) {
       fields.port = merged.port;
       fields.database_name = merged.database_name;
       fields.username = merged.username;
-      fields.password = encrypt(merged.password);
+      const encryptedPassword = encrypt(merged.password);
+      if (encryptedPassword !== null) fields.password = encryptedPassword;
       fields.encrypt = merged.encrypt ? 1 : 0;
       fields.trust_cert = merged.trust_cert ? 1 : 0;
     }
