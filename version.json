@@ -1,5 +1,5 @@
 {
-  "version": "2.1.2",
-  "release_date": "2026-06-17",
-  "changelog": "- docs: add user manual and update connection docs for CSV/Excel support"
+  "version": "2.1.3",
+  "release_date": "2026-06-25",
+  "changelog": "- info(job-editor): informacion de ayuda e el paso 3 de creación del job"
 }
