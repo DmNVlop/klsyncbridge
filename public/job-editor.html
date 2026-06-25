@@ -286,6 +286,324 @@
             </div>
           </div>
 
+          <!-- Documentación de filtros -->
+          <div class="mb-4">
+            <button type="button" onclick="toggleFilterDocs()" class="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors group">
+              <svg id="filter-docs-chevron" class="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+              <svg class="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+              </svg>
+              <span>Ver documentación de expresiones y ejemplos</span>
+            </button>
+
+            <div id="filter-docs-body" style="display:none" class="mt-3 border border-white/8 rounded-xl overflow-hidden text-xs">
+
+              <!-- Header -->
+              <div class="px-4 py-3 bg-white/3 border-b border-white/5 flex items-center gap-2">
+                <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <span class="font-semibold text-slate-300">Referencia de expresiones de filtro</span>
+                <span class="ml-auto text-slate-600">JS · fila por fila</span>
+              </div>
+
+              <div class="p-4 space-y-5 bg-[#0b0e17]">
+
+                <!-- Cómo funciona -->
+                <div>
+                  <p class="font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                    Cómo funciona
+                  </p>
+                  <p class="text-slate-500 leading-relaxed">
+                    El filtro es una expresión JavaScript que se evalúa <span class="text-slate-400">una vez por cada fila</span> del origen SQL.
+                    Todas las columnas de esa fila están disponibles como <span class="font-mono text-amber-300">variables locales</span> con su nombre exacto.
+                    Si la expresión devuelve <span class="font-mono text-emerald-400">true</span> → la fila pasa al envío.
+                    Si devuelve <span class="font-mono text-red-400">false</span> → se omite.
+                  </p>
+                  <div class="mt-2 p-3 bg-surface rounded-lg border border-white/5 font-mono text-slate-400 leading-relaxed">
+                    <span class="text-slate-600">// columnas disponibles como variables:</span><br>
+                    <span class="text-amber-300">SheetExt01</span>, <span class="text-amber-300">ESPESOR</span>, <span class="text-amber-300">CATEGORIA</span>, <span class="text-amber-300">PRECIO</span> <span class="text-slate-600">...</span>
+                  </div>
+                </div>
+
+                <!-- Tipos de datos -->
+                <div>
+                  <p class="font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0"></span>
+                    Tipos de datos en SQL Server → JavaScript
+                  </p>
+                  <div class="overflow-x-auto">
+                    <table class="w-full border-collapse">
+                      <thead>
+                        <tr class="border-b border-white/5">
+                          <th class="text-left py-1.5 px-2 text-slate-500 font-medium">Tipo SQL</th>
+                          <th class="text-left py-1.5 px-2 text-slate-500 font-medium">Llega como</th>
+                          <th class="text-left py-1.5 px-2 text-slate-500 font-medium">Ejemplo de valor</th>
+                          <th class="text-left py-1.5 px-2 text-slate-500 font-medium">Cómo comparar</th>
+                        </tr>
+                      </thead>
+                      <tbody class="text-slate-500">
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono">nvarchar / varchar</td>
+                          <td class="py-1.5 px-2 font-mono text-slate-400">string</td>
+                          <td class="py-1.5 px-2 font-mono">"Roble"</td>
+                          <td class="py-1.5 px-2 font-mono text-amber-300/80">CAMPO == "Roble"</td>
+                        </tr>
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono">int / decimal / float</td>
+                          <td class="py-1.5 px-2 font-mono text-slate-400">number</td>
+                          <td class="py-1.5 px-2 font-mono">18</td>
+                          <td class="py-1.5 px-2 font-mono text-amber-300/80">ESPESOR &gt;= 18</td>
+                        </tr>
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono">bit</td>
+                          <td class="py-1.5 px-2 font-mono text-slate-400">1 / 0 o true/false</td>
+                          <td class="py-1.5 px-2 font-mono">1</td>
+                          <td class="py-1.5 px-2 font-mono text-amber-300/80">!!ACTIVO</td>
+                        </tr>
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono">NULL (cualquier tipo)</td>
+                          <td class="py-1.5 px-2 font-mono text-slate-400">null</td>
+                          <td class="py-1.5 px-2 font-mono">null</td>
+                          <td class="py-1.5 px-2 font-mono text-amber-300/80">CAMPO != null</td>
+                        </tr>
+                        <tr>
+                          <td class="py-1.5 px-2 font-mono">datetime / date</td>
+                          <td class="py-1.5 px-2 font-mono text-slate-400">Date o string</td>
+                          <td class="py-1.5 px-2 font-mono">"2024-01-15"</td>
+                          <td class="py-1.5 px-2 font-mono text-amber-300/80">String(FECHA).includes("2024")</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Problema NULL / vacío -->
+                <div>
+                  <p class="font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0"></span>
+                    Problema frecuente: campos "vacíos" en SQL Server
+                  </p>
+                  <p class="text-slate-500 mb-2">Un campo puede parecer vacío de varias formas. Hay que cubrirlas todas:</p>
+                  <div class="overflow-x-auto mb-2">
+                    <table class="w-full border-collapse">
+                      <thead>
+                        <tr class="border-b border-white/5">
+                          <th class="text-left py-1.5 px-2 text-slate-500 font-medium">Lo que ves en el grid</th>
+                          <th class="text-left py-1.5 px-2 text-slate-500 font-medium">Lo que llega en JS</th>
+                          <th class="text-left py-1.5 px-2 text-slate-500 font-medium">Lo captura <code class="bg-white/5 px-1 rounded">!= null</code>?</th>
+                        </tr>
+                      </thead>
+                      <tbody class="text-slate-500">
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono text-red-400">NULL</td>
+                          <td class="py-1.5 px-2 font-mono">null</td>
+                          <td class="py-1.5 px-2 text-emerald-400">✓ sí</td>
+                        </tr>
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono">(celda vacía)</td>
+                          <td class="py-1.5 px-2 font-mono">""</td>
+                          <td class="py-1.5 px-2 text-red-400">✗ no — es string vacío</td>
+                        </tr>
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono">"NULL" (texto literal)</td>
+                          <td class="py-1.5 px-2 font-mono">"NULL"</td>
+                          <td class="py-1.5 px-2 text-red-400">✗ no — es string</td>
+                        </tr>
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono">0</td>
+                          <td class="py-1.5 px-2 font-mono">0</td>
+                          <td class="py-1.5 px-2 text-red-400">✗ no — es número 0</td>
+                        </tr>
+                        <tr class="border-b border-white/3">
+                          <td class="py-1.5 px-2 font-mono">"0" (texto)</td>
+                          <td class="py-1.5 px-2 font-mono">"0"</td>
+                          <td class="py-1.5 px-2 text-red-400">✗ no — es string "0"</td>
+                        </tr>
+                        <tr>
+                          <td class="py-1.5 px-2 font-mono">"   " (espacios)</td>
+                          <td class="py-1.5 px-2 font-mono">"   "</td>
+                          <td class="py-1.5 px-2 text-red-400">✗ no — trim() necesario</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p class="text-slate-500 mb-1.5 font-medium text-slate-400">Expresión recomendada para "campo tiene valor real":</p>
+                  <div class="p-3 bg-surface rounded-lg border border-emerald-500/20 font-mono text-emerald-300/90 break-all leading-relaxed">
+                    SheetExt01 != null &amp;&amp; String(SheetExt01).trim() !== "" &amp;&amp; String(SheetExt01).trim() !== "0" &amp;&amp; String(SheetExt01).trim().toUpperCase() !== "NULL"
+                  </div>
+                </div>
+
+                <!-- Operadores -->
+                <div>
+                  <p class="font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0"></span>
+                    Operadores disponibles
+                  </p>
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <p class="text-slate-500 mb-1.5 font-medium">Comparación</p>
+                      <div class="space-y-1 font-mono text-slate-500">
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">&gt;</span><span>mayor que</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">&lt;</span><span>menor que</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">&gt;=</span><span>mayor o igual</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">&lt;=</span><span>menor o igual</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">==</span><span>igual (con coerción)</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">===</span><span>igual estricto</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">!=</span><span>distinto</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">!==</span><span>distinto estricto</span></div>
+                      </div>
+                    </div>
+                    <div>
+                      <p class="text-slate-500 mb-1.5 font-medium">Lógicos</p>
+                      <div class="space-y-1 font-mono text-slate-500">
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">&amp;&amp;</span><span>AND — ambas deben cumplirse</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">||</span><span>OR — basta con una</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">!</span><span>NOT — niega la condición</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80 w-8">( )</span><span>paréntesis para agrupar</span></div>
+                      </div>
+                      <p class="text-slate-500 mt-3 mb-1.5 font-medium">Strings</p>
+                      <div class="space-y-1 font-mono text-slate-500">
+                        <div class="flex gap-2"><span class="text-amber-300/80">.includes()</span><span>contiene</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80">.startsWith()</span><span>empieza con</span></div>
+                        <div class="flex gap-2"><span class="text-amber-300/80">.endsWith()</span><span>termina con</span></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-2 text-slate-600">
+                    <span class="font-medium text-slate-500">Tip:</span> Usá <span class="font-mono">==</span> con NULL (<span class="font-mono">CAMPO == null</span> captura tanto <span class="font-mono">null</span> como <span class="font-mono">undefined</span>). Usá <span class="font-mono">===</span> cuando necesités distinguir tipos exactos.
+                  </div>
+                </div>
+
+                <!-- Funciones útiles -->
+                <div>
+                  <p class="font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0"></span>
+                    Funciones útiles
+                  </p>
+                  <div class="space-y-1.5">
+                    <div class="flex gap-3">
+                      <span class="font-mono text-cyan-300/80 shrink-0 w-48">String(CAMPO)</span>
+                      <span class="text-slate-500">convierte a string — seguro con null/number/boolean</span>
+                    </div>
+                    <div class="flex gap-3">
+                      <span class="font-mono text-cyan-300/80 shrink-0 w-48">String(CAMPO).trim()</span>
+                      <span class="text-slate-500">elimina espacios al inicio y al final</span>
+                    </div>
+                    <div class="flex gap-3">
+                      <span class="font-mono text-cyan-300/80 shrink-0 w-48">String(CAMPO).toUpperCase()</span>
+                      <span class="text-slate-500">convierte a mayúsculas para comparar sin importar el case</span>
+                    </div>
+                    <div class="flex gap-3">
+                      <span class="font-mono text-cyan-300/80 shrink-0 w-48">Number(CAMPO)</span>
+                      <span class="text-slate-500">convierte a número — si el campo llega como string "18"</span>
+                    </div>
+                    <div class="flex gap-3">
+                      <span class="font-mono text-cyan-300/80 shrink-0 w-48">isNaN(Number(CAMPO))</span>
+                      <span class="text-slate-500">true si el valor no es un número válido</span>
+                    </div>
+                    <div class="flex gap-3">
+                      <span class="font-mono text-cyan-300/80 shrink-0 w-48">!!CAMPO</span>
+                      <span class="text-slate-500">convierte a boolean — false para 0, null, "", undefined</span>
+                    </div>
+                    <div class="flex gap-3">
+                      <span class="font-mono text-cyan-300/80 shrink-0 w-48">/patrón/.test(String(C))</span>
+                      <span class="text-slate-500">regex — ej: <span class="font-mono text-slate-400">/^MAT-\d+$/.test(String(CODIGO))</span></span>
+                    </div>
+                    <div class="flex gap-3">
+                      <span class="font-mono text-cyan-300/80 shrink-0 w-48">["A","B"].includes(CAMPO)</span>
+                      <span class="text-slate-500">equivalente a SQL IN — campo debe ser uno de los valores</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Ejemplos reales -->
+                <div>
+                  <p class="font-semibold text-slate-300 mb-3 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+                    Ejemplos por caso de uso
+                  </p>
+                  <div class="space-y-3">
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Campo con valor real (sin NULL / vacíos / ceros)</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem] leading-relaxed">
+                        SheetExt01 != null &amp;&amp; String(SheetExt01).trim() !== "" &amp;&amp; String(SheetExt01).trim() !== "0" &amp;&amp; String(SheetExt01).trim().toUpperCase() !== "NULL"
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Solo registros de una categoría</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem]">
+                        CATEGORIA == "Sheet"
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Rango numérico</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem]">
+                        ESPESOR &gt;= 10 &amp;&amp; ESPESOR &lt;= 30
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Múltiples categorías (equivalente a IN)</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem]">
+                        ["Sheet", "Panel", "MDF"].includes(String(CATEGORIA))
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Nombre contiene texto (case insensitive)</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem]">
+                        String(DESCRIPCION).toUpperCase().includes("ROBLE")
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Código con formato específico (regex)</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem]">
+                        /^MAT-\d+$/.test(String(CODIGO))
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Registro activo con precio positivo</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem]">
+                        !!ACTIVO &amp;&amp; Number(PRECIO) &gt; 0
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Campo presente Y categoría específica (combinado)</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem] leading-relaxed">
+                        SheetExt01 != null &amp;&amp; String(SheetExt01).trim() !== "" &amp;&amp; String(SheetExt01).trim().toUpperCase() !== "NULL" &amp;&amp; CATEGORIA == "Sheet"
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="text-slate-400 font-medium mb-1">Excluir registros de prueba</p>
+                      <div class="p-2.5 bg-surface rounded-lg border border-white/5 font-mono text-amber-300/80 break-all text-[0.7rem]">
+                        !String(DESCRIPCION).toUpperCase().startsWith("TEST") &amp;&amp; !String(DESCRIPCION).toUpperCase().startsWith("PRUEBA")
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                <!-- Nota sobre errores -->
+                <div class="p-3 bg-amber-950/20 border border-amber-500/15 rounded-lg">
+                  <p class="font-medium text-amber-400 mb-1">Comportamiento ante errores</p>
+                  <p class="text-slate-500 leading-relaxed">Si la expresión lanza un error de JavaScript (variable no definida, sintaxis incorrecta, etc.), la fila se <span class="text-amber-300">incluye por defecto</span> — no se omite. El error se registra en los logs de ejecución del job. Para debuggear, revisá los logs después de ejecutar manualmente.</p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
           <!-- Builder visual de condiciones -->
           <div id="filter-builder-simple">
             <p class="text-xs text-slate-500 mb-2">Definí una o más condiciones. Las filas que <span class="font-medium text-slate-400">no las cumplan</span> se omiten.</p>
@@ -880,6 +1198,14 @@
 
     // ── Row filter ─────────────────────────────────────────────────
     const FILTER_OPS = ['>', '<', '>=', '<=', '==', '!=', 'includes', 'startsWith', 'endsWith'];
+
+    function toggleFilterDocs() {
+      const body = document.getElementById('filter-docs-body');
+      const chevron = document.getElementById('filter-docs-chevron');
+      const isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : '';
+      chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
+    }
 
     function toggleFilterPanel() {
       const body = document.getElementById('filter-panel-body');

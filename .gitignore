@@ -11,6 +11,9 @@ node_modules/
 # ── Documentación interna de desarrollo ───────────────────────
 project-doc/
 
+# ── Release locales ───────────────────────
+release/
+
 # ── Herramientas de agentes IA ────────────────────────────────
 .agents/
 .claude/
