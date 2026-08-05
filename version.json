@@ -1,5 +1,5 @@
 {
-  "version": "2.1.3",
-  "release_date": "2026-06-25",
-  "changelog": "- info(job-editor): informacion de ayuda e el paso 3 de creación del job"
+  "version": "2.1.4",
+  "release_date": "2026-08-05",
+  "changelog": "- Exportación a archivo (CSV/JSON) como destino alternativo al endpoint en jobs de sincronización\n- Cada job puede configurarse con destino endpoint, archivo, o ambos\n- Formatos CSV (BOM, delimitador configurable) y JSON con escritura streaming para datasets grandes\n- Retención de históricos configurable por job"
 }
