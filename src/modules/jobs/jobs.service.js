@@ -17,6 +17,11 @@ function serialize(job) {
     batch_concurrency: job.batch_concurrency || 2,
     row_filter_enabled: Boolean(job.row_filter_enabled),
     row_filter_expression: job.row_filter_expression || null,
+    destination_mode: job.destination_mode || 'endpoint',
+    file_formats: job.file_formats || null,
+    output_dir: job.output_dir || null,
+    csv_delimiter: job.csv_delimiter || ';',
+    file_retention: job.file_retention || 'keep_all',
   };
 }
 
@@ -40,13 +45,14 @@ function createJob(data) {
     INSERT INTO jobs (id, name, description, connection_id, table_or_view, key_field, sync_mode, date_field,
       api_config_id, schedule_type, schedule_value, is_active,
       item_type, op_mode, op_passthrough_field, send_empty_sync, batch_size, batch_concurrency,
-      created_at, updated_at, row_filter_enabled, row_filter_expression)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      created_at, updated_at, row_filter_enabled, row_filter_expression,
+      destination_mode, file_formats, output_dir, csv_delimiter, file_retention)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, data.name, data.description || null,
     data.connection_id, data.table_or_view, data.key_field,
     data.sync_mode || 'incremental', data.date_field || null,
-    data.api_config_id, data.schedule_type, data.schedule_value,
+    data.api_config_id || null, data.schedule_type, data.schedule_value,
     data.is_active ? 1 : 0,
     data.item_type,
     data.op_mode || 'snapshot',
@@ -56,7 +62,12 @@ function createJob(data) {
     data.batch_concurrency || 2,
     n, n,
     data.row_filter_enabled ? 1 : 0,
-    data.row_filter_expression || null
+    data.row_filter_expression || null,
+    data.destination_mode || 'endpoint',
+    data.file_formats || null,
+    data.output_dir || null,
+    data.csv_delimiter || ';',
+    data.file_retention || 'keep_all'
   );
   return getJob(id);
 }
@@ -71,7 +82,8 @@ function updateJob(id, data) {
 
   const allowed = ['name', 'description', 'connection_id', 'table_or_view', 'key_field',
     'sync_mode', 'date_field', 'api_config_id', 'schedule_type', 'schedule_value',
-    'item_type', 'op_mode', 'op_passthrough_field'];
+    'item_type', 'op_mode', 'op_passthrough_field',
+    'destination_mode', 'file_formats', 'output_dir', 'csv_delimiter', 'file_retention'];
   const fields = {};
   for (const key of allowed) {
     if (data[key] !== undefined) fields[key] = data[key];

@@ -43,6 +43,22 @@ const OP_MODES = {
   PASSTHROUGH: 'passthrough',
 };
 
+const DESTINATION_MODES = {
+  ENDPOINT: 'endpoint',
+  FILE: 'file',
+  BOTH: 'both',
+};
+
+const FILE_FORMATS = {
+  CSV: 'csv',
+  JSON: 'json',
+};
+
+const FILE_RETENTION = {
+  KEEP_ALL: 'keep_all',
+  KEEP_LAST: 'keep_last',
+};
+
 const ITEM_TYPES = {
   MATERIAL: 'material',
   EDGE: 'edge',
@@ -97,6 +113,9 @@ module.exports = {
   HTTP_METHODS,
   TRANSFORMS,
   OP_MODES,
+  DESTINATION_MODES,
+  FILE_FORMATS,
+  FILE_RETENTION,
   ITEM_TYPES,
   ROLES,
   ERROR_CATEGORIES,

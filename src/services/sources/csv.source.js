@@ -74,4 +74,4 @@ async function getRecords(config, _jobContext) {
   });
 }
 
-module.exports = { test, getTables, getFields, getRecords };
+module.exports = { test, getTables, getFields, getRecords, resolveSafePath };

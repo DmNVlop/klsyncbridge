@@ -1,7 +1,10 @@
 'use strict';
 
 const { z } = require('zod');
-const { AUTH_TYPES, SYNC_MODES, SCHEDULE_TYPES, HTTP_METHODS, TRANSFORMS, OP_MODES, ITEM_TYPES } = require('../config/constants');
+const {
+  AUTH_TYPES, SYNC_MODES, SCHEDULE_TYPES, HTTP_METHODS, TRANSFORMS, OP_MODES, ITEM_TYPES,
+  DESTINATION_MODES, FILE_RETENTION,
+} = require('../config/constants');
 
 const uuidSchema = z.string().uuid();
 
@@ -120,7 +123,7 @@ const jobBaseSchema = z.object({
   key_field: z.string().min(1).max(200),
   sync_mode: z.enum(Object.values(SYNC_MODES)).default('incremental'),
   date_field: z.string().max(200).optional().nullable(),
-  api_config_id: uuidSchema,
+  api_config_id: uuidSchema.optional().nullable(),
   schedule_type: z.enum(Object.values(SCHEDULE_TYPES)),
   schedule_value: z.string().min(1).max(200),
   is_active: z.boolean().default(false),
@@ -132,6 +135,11 @@ const jobBaseSchema = z.object({
   batch_concurrency: z.number().int().min(1).max(10).default(2),
   row_filter_enabled: z.boolean().default(false),
   row_filter_expression: z.string().max(2000).optional().nullable(),
+  destination_mode: z.enum(Object.values(DESTINATION_MODES)).default('endpoint'),
+  file_formats: z.string().max(20).optional().nullable(),
+  output_dir: z.string().max(500).optional().nullable(),
+  csv_delimiter: z.string().min(1).max(5).default(';'),
+  file_retention: z.enum(Object.values(FILE_RETENTION)).default('keep_all'),
 });
 
 function passthroughRefine(data) {
@@ -140,8 +148,26 @@ function passthroughRefine(data) {
 }
 const passthroughMsg = { message: 'op_passthrough_field es requerido cuando op_mode es "passthrough"', path: ['op_passthrough_field'] };
 
-const createJobSchema = jobBaseSchema.refine(passthroughRefine, passthroughMsg);
-const updateJobSchema = jobBaseSchema.partial().refine(passthroughRefine, passthroughMsg);
+function destinationSuperRefine(data, ctx) {
+  // En updates parciales que no tocan el destino, destination_mode llega undefined — no validar nada acá
+  if (data.destination_mode === undefined) return;
+  const mode = data.destination_mode;
+  if (mode !== DESTINATION_MODES.FILE && !data.api_config_id) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'api_config_id es requerido cuando destination_mode es "endpoint" o "both"', path: ['api_config_id'] });
+  }
+  if (mode !== DESTINATION_MODES.ENDPOINT) {
+    if (!data.output_dir) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'output_dir es requerido cuando destination_mode incluye archivo', path: ['output_dir'] });
+    }
+    const formats = String(data.file_formats || '').split(',').map(f => f.trim()).filter(Boolean);
+    if (formats.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'file_formats es requerido (csv, json, o ambos) cuando destination_mode incluye archivo', path: ['file_formats'] });
+    }
+  }
+}
+
+const createJobSchema = jobBaseSchema.refine(passthroughRefine, passthroughMsg).superRefine(destinationSuperRefine);
+const updateJobSchema = jobBaseSchema.partial().refine(passthroughRefine, passthroughMsg).superRefine(destinationSuperRefine);
 
 const logsFilterSchema = z.object({
   job_id: uuidSchema.optional(),

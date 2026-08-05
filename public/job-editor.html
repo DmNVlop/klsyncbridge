@@ -50,7 +50,7 @@
       <div class="flex-1 h-px bg-white/10 mx-2"></div>
       <div id="s2" class="flex items-center gap-2 step-inactive">
         <div class="w-7 h-7 rounded-full bg-white/10 text-slate-400 text-xs flex items-center justify-center font-semibold">2</div>
-        <span class="text-sm text-slate-400">API destino</span>
+        <span class="text-sm text-slate-400">Destino</span>
       </div>
       <div class="flex-1 h-px bg-white/10 mx-2"></div>
       <div id="s3" class="flex items-center gap-2 step-inactive">
@@ -173,17 +173,73 @@
 
     <!-- Step 2 -->
     <div id="step-2" class="hidden bg-surface rounded-xl border border-white/5 p-6">
-      <h2 class="font-medium text-white mb-5">Paso 2: API destino</h2>
+      <h2 class="font-medium text-white mb-5">Paso 2: Destino</h2>
       <div class="space-y-4">
         <div>
-          <label class="block text-xs font-medium text-slate-400 mb-1">Configuración de API</label>
-          <select id="j-api" class="inp">
-            <option value="">Seleccionar API...</option>
-          </select>
-          <p class="text-xs text-slate-500 mt-1">Seleccioná la API previamente configurada en la sección <span class="text-slate-400">API Configs</span>. Define la URL, método HTTP y autenticación. Si no aparece la que buscás, creála primero desde el menú principal.</p>
+          <label class="block text-xs font-medium text-slate-400 mb-2">Destino de la sincronización</label>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2 text-sm text-slate-300">
+              <input type="radio" name="j-destination-mode" value="endpoint" checked onchange="toggleDestinationBlocks()" class="rounded">
+              Endpoint
+            </label>
+            <label class="flex items-center gap-2 text-sm text-slate-300">
+              <input type="radio" name="j-destination-mode" value="file" onchange="toggleDestinationBlocks()" class="rounded">
+              Archivo
+            </label>
+            <label class="flex items-center gap-2 text-sm text-slate-300">
+              <input type="radio" name="j-destination-mode" value="both" onchange="toggleDestinationBlocks()" class="rounded">
+              Ambos
+            </label>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">Endpoint envía los datos a la API cloud (comportamiento actual). Archivo genera un CSV/JSON en disco. Ambos hace las dos cosas con el mismo dato ya mapeado.</p>
         </div>
-        <div id="api-preview" class="hidden p-4 bg-base rounded-lg border border-white/5">
-          <p id="api-preview-text" class="text-sm font-mono text-slate-300"></p>
+
+        <div id="endpoint-block" class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Configuración de API</label>
+            <select id="j-api" class="inp">
+              <option value="">Seleccionar API...</option>
+            </select>
+            <p class="text-xs text-slate-500 mt-1">Seleccioná la API previamente configurada en la sección <span class="text-slate-400">API Configs</span>. Define la URL, método HTTP y autenticación. Si no aparece la que buscás, creála primero desde el menú principal.</p>
+          </div>
+          <div id="api-preview" class="hidden p-4 bg-base rounded-lg border border-white/5">
+            <p id="api-preview-text" class="text-sm font-mono text-slate-300"></p>
+          </div>
+        </div>
+
+        <div id="file-block" class="hidden space-y-4 border-t border-white/5 pt-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-2">Formatos de archivo</label>
+            <div class="flex gap-4">
+              <label class="flex items-center gap-2 text-sm text-slate-300">
+                <input id="j-file-format-csv" type="checkbox" checked class="rounded">
+                CSV
+              </label>
+              <label class="flex items-center gap-2 text-sm text-slate-300">
+                <input id="j-file-format-json" type="checkbox" class="rounded">
+                JSON
+              </label>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Carpeta destino</label>
+              <input id="j-output-dir" type="text" class="inp" placeholder="C:\SyncBridge\exports">
+              <p class="text-xs text-slate-500 mt-1">Ruta absoluta en el servidor donde corre SyncBridge.</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-400 mb-1">Delimitador CSV</label>
+              <input id="j-csv-delimiter" type="text" maxlength="5" value=";" class="inp">
+              <p class="text-xs text-slate-500 mt-1">Por defecto <span class="font-mono">;</span> (clientes en español, <span class="font-mono">,</span> es separador decimal).</p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">Retención de históricos</label>
+            <select id="j-file-retention" class="inp">
+              <option value="keep_all">Conservar histórico completo</option>
+              <option value="keep_last">Conservar solo el último archivo</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="flex justify-between mt-6">
@@ -741,8 +797,15 @@
           document.getElementById('j-desc').value = j.description || '';
           document.getElementById('j-conn').value = j.connection_id;
           document.getElementById('j-mode').value = j.sync_mode;
-          document.getElementById('j-api').value = j.api_config_id;
+          if (j.api_config_id) document.getElementById('j-api').value = j.api_config_id;
           document.getElementById('j-api').dispatchEvent(new Event('change'));
+          setDestinationMode(j.destination_mode);
+          const formats = String(j.file_formats || '').split(',').map(f => f.trim());
+          document.getElementById('j-file-format-csv').checked = formats.includes('csv');
+          document.getElementById('j-file-format-json').checked = formats.includes('json');
+          document.getElementById('j-output-dir').value = j.output_dir || '';
+          document.getElementById('j-csv-delimiter').value = j.csv_delimiter || ';';
+          document.getElementById('j-file-retention').value = j.file_retention || 'keep_all';
           document.getElementById('j-sched-type').value = j.schedule_type;
           if (j.schedule_type === 'interval') document.getElementById('j-sched-val-interval').value = j.schedule_value;
           else document.getElementById('j-sched-val-cron').value = j.schedule_value;
@@ -836,6 +899,23 @@
     function togglePassthroughField() {
       const mode = document.getElementById('j-op-mode').value;
       document.getElementById('passthrough-field-row').classList.toggle('hidden', mode !== 'passthrough');
+    }
+
+    function getDestinationMode() {
+      const checked = document.querySelector('input[name="j-destination-mode"]:checked');
+      return checked ? checked.value : 'endpoint';
+    }
+
+    function setDestinationMode(mode) {
+      const radio = document.querySelector(`input[name="j-destination-mode"][value="${mode || 'endpoint'}"]`);
+      if (radio) radio.checked = true;
+      toggleDestinationBlocks();
+    }
+
+    function toggleDestinationBlocks() {
+      const mode = getDestinationMode();
+      document.getElementById('endpoint-block').classList.toggle('hidden', mode === 'file');
+      document.getElementById('file-block').classList.toggle('hidden', mode === 'endpoint');
     }
 
     function flattenSchema(obj, prefix) {
@@ -938,7 +1018,14 @@
         }
       }
       if (step === 2) {
-        if (!document.getElementById('j-api').value) { alert('Selecciona una API destino'); return false; }
+        const mode = getDestinationMode();
+        if (mode !== 'file' && !document.getElementById('j-api').value) { alert('Selecciona una API destino'); return false; }
+        if (mode !== 'endpoint') {
+          if (!document.getElementById('j-output-dir').value.trim()) { alert('Ingresa la carpeta destino para el archivo'); return false; }
+          if (!document.getElementById('j-file-format-csv').checked && !document.getElementById('j-file-format-json').checked) {
+            alert('Selecciona al menos un formato de archivo (CSV o JSON)'); return false;
+          }
+        }
       }
       return true;
     }
@@ -1415,6 +1502,12 @@
           batchSize: parseInt(document.getElementById('j-batch-size').value, 10) || 500,
           batchConcurrency: parseInt(document.getElementById('j-batch-concurrency').value, 10) || 2,
           api: document.getElementById('j-api').value,
+          destinationMode: getDestinationMode(),
+          fileFormatCsv: document.getElementById('j-file-format-csv').checked,
+          fileFormatJson: document.getElementById('j-file-format-json').checked,
+          outputDir: document.getElementById('j-output-dir').value.trim(),
+          csvDelimiter: document.getElementById('j-csv-delimiter').value,
+          fileRetention: document.getElementById('j-file-retention').value,
           schedType: document.getElementById('j-sched-type').value,
           schedInterval: document.getElementById('j-sched-val-interval').value,
           schedCron: document.getElementById('j-sched-val-cron').value,
@@ -1484,6 +1577,12 @@
         }
         renderSchemaPanel();
       }
+      setDestinationMode(f.destinationMode);
+      document.getElementById('j-file-format-csv').checked = f.fileFormatCsv !== false;
+      document.getElementById('j-file-format-json').checked = Boolean(f.fileFormatJson);
+      document.getElementById('j-output-dir').value = f.outputDir || '';
+      document.getElementById('j-csv-delimiter').value = f.csvDelimiter || ';';
+      document.getElementById('j-file-retention').value = f.fileRetention || 'keep_all';
 
       // Step 3 — field maps
       if (draft.maps && draft.maps.length) {
@@ -1532,6 +1631,11 @@
       const schedVal = schedType==='interval' ? document.getElementById('j-sched-val-interval').value : document.getElementById('j-sched-val-cron').value;
 
       const opMode = document.getElementById('j-op-mode').value;
+      const destinationMode = getDestinationMode();
+      const fileFormats = [
+        document.getElementById('j-file-format-csv').checked ? 'csv' : null,
+        document.getElementById('j-file-format-json').checked ? 'json' : null,
+      ].filter(Boolean).join(',');
       const jobData = {
         name: document.getElementById('j-name').value.trim(),
         description: document.getElementById('j-desc').value.trim() || null,
@@ -1540,7 +1644,7 @@
         key_field: document.getElementById('j-key').value,
         sync_mode: document.getElementById('j-mode').value,
         date_field: document.getElementById('j-date-field').value || null,
-        api_config_id: document.getElementById('j-api').value,
+        api_config_id: document.getElementById('j-api').value || null,
         schedule_type: schedType,
         schedule_value: schedVal,
         is_active: document.getElementById('j-activate').checked,
@@ -1550,6 +1654,11 @@
         send_empty_sync: document.getElementById('j-send-empty-sync').checked,
         batch_size: parseInt(document.getElementById('j-batch-size').value, 10) || 500,
         batch_concurrency: parseInt(document.getElementById('j-batch-concurrency').value, 10) || 2,
+        destination_mode: destinationMode,
+        file_formats: fileFormats || null,
+        output_dir: document.getElementById('j-output-dir').value.trim() || null,
+        csv_delimiter: document.getElementById('j-csv-delimiter').value || ';',
+        file_retention: document.getElementById('j-file-retention').value,
         ...getFilterData(),
       };
 

@@ -296,6 +296,81 @@ function runMigrations(db) {
       addColIfNotExists('connections', 'config', "TEXT NOT NULL DEFAULT '{}'");
       db.prepare("UPDATE connections SET source_type = 'sqlserver' WHERE source_type IS NULL").run();
     },
+
+    // v10: destino de exportación por job — endpoint (actual), archivo, o ambos.
+    // api_config_id pasa a ser opcional (jobs con destino solo-archivo no requieren API config),
+    // lo cual exige reconstruir la tabla jobs porque SQLite no soporta ALTER COLUMN para quitar NOT NULL.
+    () => {
+      const addColIfNotExists = (table, col, definition) => {
+        const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols.find(c => c.name === col)) {
+          db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${definition}`).run();
+        }
+      };
+
+      const fkWasOn = db.pragma('foreign_keys', { simple: true }) === 1;
+      if (fkWasOn) db.pragma('foreign_keys = OFF');
+
+      const rebuild = db.transaction(() => {
+        db.exec(`
+          CREATE TABLE jobs_new (
+            id                     TEXT PRIMARY KEY,
+            name                   TEXT NOT NULL,
+            description            TEXT,
+            connection_id          TEXT NOT NULL REFERENCES connections(id),
+            table_or_view          TEXT NOT NULL,
+            key_field              TEXT NOT NULL,
+            sync_mode              TEXT NOT NULL DEFAULT 'incremental',
+            date_field             TEXT,
+            api_config_id          TEXT REFERENCES api_configs(id),
+            schedule_type          TEXT NOT NULL,
+            schedule_value         TEXT NOT NULL,
+            is_active              INTEGER NOT NULL DEFAULT 1,
+            last_run_at            TEXT,
+            last_run_status        TEXT,
+            created_at             TEXT NOT NULL,
+            updated_at             TEXT NOT NULL,
+            item_type              TEXT,
+            op_mode                TEXT NOT NULL DEFAULT 'snapshot',
+            op_passthrough_field   TEXT,
+            send_empty_sync        INTEGER NOT NULL DEFAULT 0,
+            batch_size             INTEGER NOT NULL DEFAULT 500,
+            batch_concurrency      INTEGER NOT NULL DEFAULT 2,
+            row_filter_enabled     INTEGER NOT NULL DEFAULT 0,
+            row_filter_expression  TEXT,
+            destination_mode       TEXT NOT NULL DEFAULT 'endpoint',
+            file_formats           TEXT,
+            output_dir             TEXT,
+            csv_delimiter          TEXT NOT NULL DEFAULT ';',
+            file_retention         TEXT NOT NULL DEFAULT 'keep_all'
+          );
+        `);
+
+        db.exec(`
+          INSERT INTO jobs_new (
+            id, name, description, connection_id, table_or_view, key_field, sync_mode, date_field,
+            api_config_id, schedule_type, schedule_value, is_active, last_run_at, last_run_status,
+            created_at, updated_at, item_type, op_mode, op_passthrough_field, send_empty_sync,
+            batch_size, batch_concurrency, row_filter_enabled, row_filter_expression
+          )
+          SELECT
+            id, name, description, connection_id, table_or_view, key_field, sync_mode, date_field,
+            api_config_id, schedule_type, schedule_value, is_active, last_run_at, last_run_status,
+            created_at, updated_at, item_type, op_mode, op_passthrough_field, send_empty_sync,
+            batch_size, batch_concurrency, row_filter_enabled, row_filter_expression
+          FROM jobs;
+        `);
+
+        db.exec('DROP TABLE jobs;');
+        db.exec('ALTER TABLE jobs_new RENAME TO jobs;');
+      });
+      rebuild();
+
+      if (fkWasOn) db.pragma('foreign_keys = ON');
+
+      addColIfNotExists('execution_logs', 'file_export_status', 'TEXT');
+      addColIfNotExists('execution_logs', 'file_paths', 'TEXT');
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {
