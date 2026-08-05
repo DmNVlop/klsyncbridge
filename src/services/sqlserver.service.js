@@ -58,6 +58,26 @@ async function getTables(conn) {
   }
 }
 
+async function resolveTableSchema(conn, tableName) {
+  let pool;
+  try {
+    pool = await getPool(conn);
+    const request = pool.request();
+    request.input('table', sql.NVarChar, tableName);
+    const result = await request.query(`
+      SELECT TOP 1 TABLE_SCHEMA as schema_name
+      FROM INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_NAME = @table
+    `);
+    return result.recordset[0]?.schema_name || null;
+  } catch (err) {
+    logger.warn('No se pudo resolver el schema de la tabla/vista, se usará sin calificar', { table: tableName, error: err.message });
+    return null;
+  } finally {
+    if (pool) await pool.close().catch(() => {});
+  }
+}
+
 async function getFields(conn, tableName) {
   if (!tableName) throw new AppError('Nombre de tabla requerido', 'VALIDATION_ERROR', 400);
   let pool;
@@ -106,4 +126,4 @@ function sanitizeSqlError(message) {
     .replace(/uid=[^\s;,]*/gi, 'uid=****');
 }
 
-module.exports = { testConnection, getTables, getFields, executeQuery };
+module.exports = { testConnection, getTables, getFields, executeQuery, resolveTableSchema };

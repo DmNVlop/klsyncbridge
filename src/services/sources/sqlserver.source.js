@@ -17,7 +17,8 @@ async function getFields(config, tableName) {
 
 async function getRecords(config, jobContext) {
   const { table_or_view, sync_mode, date_field, syncState } = jobContext;
-  const table = `[${table_or_view}]`;
+  const schema = await sqlServerService.resolveTableSchema(config, table_or_view);
+  const table = schema ? `[${schema}].[${table_or_view}]` : `[${table_or_view}]`;
 
   let query;
   let params = {};
