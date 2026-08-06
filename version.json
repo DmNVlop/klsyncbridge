@@ -1,5 +1,5 @@
 {
-  "version": "2.1.5",
-  "release_date": "2026-08-05",
-  "changelog": "- Fix: jobs contra vistas/tablas fuera del schema dbo (ej. SAP Business One) fallaban con \"Invalid object name\" al ejecutar, aunque el Test de conexión funcionaba bien. Ahora se resuelve y califica el schema real automáticamente."
+  "version": "2.1.6",
+  "release_date": "2026-08-06",
+  "changelog": "- Destino Archivo: schema de ejemplo seleccionable y persistente para el panel de mapeo de campos (paso 3)"
 }
