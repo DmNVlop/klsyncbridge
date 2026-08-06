@@ -140,6 +140,7 @@ const jobBaseSchema = z.object({
   output_dir: z.string().max(500).optional().nullable(),
   csv_delimiter: z.string().min(1).max(5).default(';'),
   file_retention: z.enum(Object.values(FILE_RETENTION)).default('keep_all'),
+  example_schema_api_id: uuidSchema.optional().nullable(),
 });
 
 function passthroughRefine(data) {

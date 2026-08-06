@@ -371,6 +371,16 @@ function runMigrations(db) {
       addColIfNotExists('execution_logs', 'file_export_status', 'TEXT');
       addColIfNotExists('execution_logs', 'file_paths', 'TEXT');
     },
+
+    // v11: example_schema_api_id en jobs — referencia opcional a un api_config ajeno
+    // usado solo como schema de ejemplo en el mapeo de campos cuando destination_mode = 'file'.
+    // Sin FK: si el api_config referenciado se borra, el job y su field_maps no se ven afectados.
+    () => {
+      const cols = db.prepare('PRAGMA table_info(jobs)').all();
+      if (!cols.find(c => c.name === 'example_schema_api_id')) {
+        db.prepare('ALTER TABLE jobs ADD COLUMN example_schema_api_id TEXT').run();
+      }
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {

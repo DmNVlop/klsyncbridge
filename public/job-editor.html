@@ -281,11 +281,20 @@
         </div>
       </div>
 
+      <!-- Selector de schema de ejemplo (solo destino Archivo, sin API propia) -->
+      <div id="example-schema-block" class="hidden mb-5">
+        <label class="block text-xs font-medium text-slate-400 mb-1">Schema de referencia (ejemplo)</label>
+        <select id="j-example-schema" class="inp" onchange="renderSchemaPanel()">
+          <option value="">Sin schema de ejemplo...</option>
+        </select>
+        <p class="text-xs text-slate-500 mt-1">Destino Archivo no tiene API propia. Elegí el schema de otra API ya configurada solo como referencia visual para armar los nombres de campo — no se envía a ninguna API.</p>
+      </div>
+
       <!-- Schema panel -->
       <div id="schema-panel" class="hidden mb-5 bg-base rounded-lg border border-white/5">
         <button type="button" onclick="toggleSchemaPanel()" class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors rounded-lg">
           <div class="flex items-center gap-2">
-            <span class="text-xs font-medium text-slate-400">Schema del objeto API</span>
+            <span id="schema-panel-title" class="text-xs font-medium text-slate-400">Schema del objeto API</span>
             <span id="schema-mapped-count" class="hidden text-xs bg-accent/20 text-accent px-2 py-0.5 rounded-full"></span>
           </div>
           <svg id="schema-chevron" class="w-4 h-4 text-slate-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -783,6 +792,10 @@
         apiConfigs.forEach(c => {
           sel.innerHTML += `<option value="${c.id}">${c.name} — ${c.method} ${c.base_url}${c.endpoint_path}</option>`;
         });
+        const exampleSel = document.getElementById('j-example-schema');
+        apiConfigs.filter(c => c.payload_schema).forEach(c => {
+          exampleSel.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+        });
       } catch(e){}
 
       // Si editando, cargar datos
@@ -800,6 +813,8 @@
           if (j.api_config_id) document.getElementById('j-api').value = j.api_config_id;
           document.getElementById('j-api').dispatchEvent(new Event('change'));
           setDestinationMode(j.destination_mode);
+          if (j.example_schema_api_id) document.getElementById('j-example-schema').value = j.example_schema_api_id;
+          renderSchemaPanel();
           const formats = String(j.file_formats || '').split(',').map(f => f.trim());
           document.getElementById('j-file-format-csv').checked = formats.includes('csv');
           document.getElementById('j-file-format-json').checked = formats.includes('json');
@@ -916,6 +931,8 @@
       const mode = getDestinationMode();
       document.getElementById('endpoint-block').classList.toggle('hidden', mode === 'file');
       document.getElementById('file-block').classList.toggle('hidden', mode === 'endpoint');
+      document.getElementById('example-schema-block').classList.toggle('hidden', mode !== 'file');
+      renderSchemaPanel();
     }
 
     function flattenSchema(obj, prefix) {
@@ -945,7 +962,10 @@
     }
 
     function renderSchemaPanel() {
-      const apiId = document.getElementById('j-api').value;
+      const mode = getDestinationMode();
+      const apiId = mode === 'file'
+        ? document.getElementById('j-example-schema').value
+        : document.getElementById('j-api').value;
       const config = apiConfigs.find(c => c.id === apiId);
       const panel = document.getElementById('schema-panel');
       const container = document.getElementById('schema-fields');
@@ -957,6 +977,10 @@
 
       const fields = flattenSchema(config.payload_schema, '');
       if (fields.length === 0) { panel.classList.add('hidden'); return; }
+
+      document.getElementById('schema-panel-title').textContent = mode === 'file'
+        ? 'Schema de ejemplo (referencia — no se envía)'
+        : 'Schema del objeto API';
 
       document.getElementById('api-schema-fields').innerHTML = fields.map(f => `<option value="${f.path}">`).join('');
 
@@ -1503,6 +1527,7 @@
           batchConcurrency: parseInt(document.getElementById('j-batch-concurrency').value, 10) || 2,
           api: document.getElementById('j-api').value,
           destinationMode: getDestinationMode(),
+          exampleSchemaApi: document.getElementById('j-example-schema').value,
           fileFormatCsv: document.getElementById('j-file-format-csv').checked,
           fileFormatJson: document.getElementById('j-file-format-json').checked,
           outputDir: document.getElementById('j-output-dir').value.trim(),
@@ -1578,6 +1603,8 @@
         renderSchemaPanel();
       }
       setDestinationMode(f.destinationMode);
+      if (f.exampleSchemaApi) document.getElementById('j-example-schema').value = f.exampleSchemaApi;
+      renderSchemaPanel();
       document.getElementById('j-file-format-csv').checked = f.fileFormatCsv !== false;
       document.getElementById('j-file-format-json').checked = Boolean(f.fileFormatJson);
       document.getElementById('j-output-dir').value = f.outputDir || '';
@@ -1659,6 +1686,7 @@
         output_dir: document.getElementById('j-output-dir').value.trim() || null,
         csv_delimiter: document.getElementById('j-csv-delimiter').value || ';',
         file_retention: document.getElementById('j-file-retention').value,
+        example_schema_api_id: destinationMode === 'file' ? (document.getElementById('j-example-schema').value || null) : null,
         ...getFilterData(),
       };
 
