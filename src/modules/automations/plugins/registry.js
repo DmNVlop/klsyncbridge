@@ -7,5 +7,6 @@ const triggers = createRegistry('disparador');
 triggers.register(require('./triggers/folder-watch.trigger'));
 
 const steps = createRegistry('paso');
+steps.register(require('./steps/ardis-xml-import.step'));
 
 module.exports = { triggers, steps };
