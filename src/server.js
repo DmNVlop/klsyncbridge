@@ -81,6 +81,8 @@ function createServer() {
     '/settings': 'settings.html',
     '/system': 'system.html',
     '/job-editor': 'job-editor.html',
+    '/automations': 'automations.html',
+    '/automation-editor': 'automation-editor.html',
   };
   for (const [route, file] of Object.entries(pages)) {
     app.get(route, (req, res) => {

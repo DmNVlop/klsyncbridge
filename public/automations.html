@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Automatizaciones</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}</style>
+</head>
+<body>
+  <main class="max-w-[1360px] mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-semibold text-white">Automatizaciones</h1>
+      <a href="/automation-editor" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
+        + Nueva automatización
+      </a>
+    </div>
+
+    <div class="bg-surface rounded-xl border border-white/5 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-white/5">
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Nombre</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Disparador</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Activa</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Salud</th>
+            <th class="text-left px-6 py-3 text-slate-400 font-medium">Último éxito</th>
+            <th class="text-right px-6 py-3 text-slate-400 font-medium">Pendientes</th>
+            <th class="text-right px-6 py-3 text-slate-400 font-medium">Errores</th>
+            <th class="text-right px-6 py-3 text-slate-400 font-medium">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="automations-tbody">
+          <tr><td colspan="8" class="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/realtime.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    const esc = UI.escapeHtml;
+    const RELOAD_DEBOUNCE_MS = 500;
+    const tbody = document.getElementById('automations-tbody');
+    let triggerTitles = null; // type → título; se carga una sola vez
+    let reloadTimer = null;
+
+    async function ensureTriggerTitles() {
+      if (triggerTitles) return;
+      triggerTitles = {};
+      try {
+        const res = await API.get('/automation-types');
+        for (const t of (res.data.triggers || [])) triggerTitles[t.type] = t.title;
+      } catch (err) {
+        UI.toast('No se han podido cargar los tipos de disparador: ' + err.message, 'warning');
+      }
+    }
+
+    function pendingCount(counts) {
+      const c = counts || {};
+      return (c.pending || 0) + (c.processing || 0) + (c.retry_wait || 0);
+    }
+
+    function errorCount(counts) {
+      const c = counts || {};
+      return (c.failed || 0) + (c.rejected || 0) + (c.invalid || 0);
+    }
+
+    function rowHtml(a) {
+      const triggerType = a.trigger ? a.trigger.type : '';
+      const errors = errorCount(a.counts);
+      const healthMessage = a.health_state !== 'ok' && a.health_message
+        ? `<div class="text-xs text-slate-500 mt-1 max-w-xs">${esc(a.health_message)}</div>`
+        : '';
+      return `
+        <tr class="border-b border-white/5 hover:bg-white/2">
+          <td class="px-6 py-3">
+            <div class="font-medium text-white">${esc(a.name)}</div>
+            ${a.description ? `<div class="text-slate-500 text-xs">${esc(a.description)}</div>` : ''}
+          </td>
+          <td class="px-6 py-3 text-slate-400 text-xs">${esc(triggerTitles[triggerType] || triggerType || '—')}</td>
+          <td class="px-6 py-3">
+            <span class="px-2 py-0.5 rounded text-xs font-medium ${a.is_active ? 'bg-accent/20 text-accent' : 'bg-white/5 text-slate-400'}">${a.is_active ? 'Activa' : 'Inactiva'}</span>
+          </td>
+          <td class="px-6 py-3">${UI.healthBadge(a.health_state)}${healthMessage}</td>
+          <td class="px-6 py-3 text-slate-400 font-mono text-xs">${esc(UI.formatDate(a.last_success_at))}</td>
+          <td class="px-6 py-3 text-right font-mono text-slate-300">${pendingCount(a.counts)}</td>
+          <td class="px-6 py-3 text-right font-mono ${errors > 0 ? 'text-red-400' : 'text-slate-500'}">${errors}</td>
+          <td class="px-6 py-3">
+            <div class="flex items-center justify-end gap-1">
+              <a href="/automation-editor?id=${encodeURIComponent(a.id)}" class="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-slate-400 text-xs">Editar</a>
+              <button type="button" data-action="delete" data-id="${esc(a.id)}" data-name="${esc(a.name)}" class="px-2 py-1 rounded bg-white/5 hover:bg-red-900/20 hover:text-red-400 text-slate-400 text-xs">Eliminar</button>
+            </div>
+          </td>
+        </tr>`;
+    }
+
+    async function load() {
+      try {
+        await ensureTriggerTitles();
+        const res = await API.get('/automations');
+        const automations = res.data || [];
+        if (automations.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" class="px-6 py-8 text-center text-slate-500">No hay automatizaciones. <a href="/automation-editor" class="text-accent">Crea la primera →</a></td></tr>';
+          return;
+        }
+        tbody.innerHTML = automations.map(rowHtml).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="8" class="px-6 py-8 text-center text-red-400">No se han podido cargar las automatizaciones.</td></tr>';
+        UI.toast('Error al cargar las automatizaciones: ' + err.message, 'error');
+      }
+    }
+
+    function scheduleReload() {
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(load, RELOAD_DEBOUNCE_MS);
+    }
+
+    async function removeAutomation(id, name) {
+      const ok = await UI.confirmDialog(
+        'Eliminar automatización',
+        `¿Eliminar «${esc(name)}»? Se borrarán también todos sus archivos registrados y su historial de intentos. Esta acción no se puede deshacer.`,
+        'Eliminar', 'bg-red-700 hover:bg-red-600 text-white'
+      );
+      if (!ok) return;
+      try {
+        await API.delete(`/automations/${encodeURIComponent(id)}`);
+        UI.toast('Automatización eliminada');
+        await load();
+      } catch (err) {
+        UI.toast('Error al eliminar: ' + err.message, 'error');
+      }
+    }
+
+    tbody.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-action="delete"]');
+      if (!button) return;
+      removeAutomation(button.dataset.id, button.dataset.name);
+    });
+
+    REALTIME.on('automation.health_changed', scheduleReload);
+    REALTIME.on('work_item.changed', scheduleReload);
+    REALTIME.connect();
+    load();
+  </script>
+</body>
+</html>

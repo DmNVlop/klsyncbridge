@@ -5,6 +5,7 @@
 const NAV_LINKS = [
   { href: '/dashboard',   label: 'Dashboard' },
   { href: '/jobs',        label: 'Jobs' },
+  { href: '/automations', label: 'Automatizaciones' },
   { href: '/connections', label: 'Conexiones' },
   { href: '/api-configs', label: 'APIs' },
   { href: '/logs',        label: 'Logs' },
@@ -110,6 +111,51 @@ function formatDate(d) {
   return new Date(d).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+// Escapa un dato antes de insertarlo en innerHTML o en un atributo.
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Estados de un archivo (work item) de una automatización.
+const ITEM_STATUS = {
+  pending:    { label: 'Pendiente',            cls: 'bg-slate-700/40 text-slate-300' },
+  processing: { label: 'Procesando',           cls: 'bg-blue-900/40 text-blue-300 animate-pulse' },
+  retry_wait: { label: 'Reintento programado', cls: 'bg-amber-900/40 text-amber-300' },
+  done:       { label: 'Subido',               cls: 'bg-emerald-900/40 text-emerald-300' },
+  rejected:   { label: 'Rechazado',            cls: 'bg-red-900/40 text-red-300' },
+  invalid:    { label: 'No válido',            cls: 'bg-red-900/40 text-red-300' },
+  failed:     { label: 'Fallido',              cls: 'bg-red-900/40 text-red-300' },
+};
+
+// Salud de una automatización.
+const HEALTH_STATE = {
+  ok:                 { label: 'Correcto',            cls: 'bg-emerald-900/40 text-emerald-300' },
+  folder_unreachable: { label: 'Carpeta inaccesible', cls: 'bg-amber-900/40 text-amber-300' },
+  needs_attention:    { label: 'Necesita revisión',   cls: 'bg-red-900/40 text-red-300' },
+};
+
+function pillBadge(entry, fallback) {
+  const label = entry ? entry.label : (fallback || '—');
+  const cls = entry ? entry.cls : 'bg-white/5 text-slate-400';
+  return `<span class="px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${cls}">${escapeHtml(label)}</span>`;
+}
+
+function itemStatusBadge(status) {
+  return pillBadge(ITEM_STATUS[status], status);
+}
+
+function healthBadge(state) {
+  return pillBadge(HEALTH_STATE[state], state);
+}
+
+const ITEM_STATUS_LABELS = Object.fromEntries(Object.entries(ITEM_STATUS).map(([key, value]) => [key, value.label]));
+const HEALTH_LABELS = Object.fromEntries(Object.entries(HEALTH_STATE).map(([key, value]) => [key, value.label]));
+
 // ─── Update checker ───────────────────────────────────────────────────────────
 
 const UPDATE_CHECK_INTERVAL = 12 * 60 * 60 * 1000; // 12 horas
@@ -208,4 +254,7 @@ async function checkUpdateBackground() {
   }
 }
 
-window.UI = { buildNav, toast, confirmDialog, statusBadge, formatDate, checkUpdateBackground, clearUpdateIndicators };
+window.UI = {
+  buildNav, toast, confirmDialog, statusBadge, formatDate, checkUpdateBackground, clearUpdateIndicators,
+  escapeHtml, itemStatusBadge, healthBadge, ITEM_STATUS_LABELS, HEALTH_LABELS,
+};
