@@ -96,6 +96,39 @@ const BATCH_DEFAULTS = {
   CONCURRENCY: 2,
 };
 
+// ── Motor de automatizaciones ────────────────────────────────
+const AUTOMATION_ITEM_STATUSES = {
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  RETRY_WAIT: 'retry_wait',
+  DONE: 'done',
+  REJECTED: 'rejected',
+  INVALID: 'invalid',
+  FAILED: 'failed',
+};
+
+const AUTOMATION_OUTCOMES = {
+  DONE: 'done',
+  REJECTED: 'rejected',
+  INVALID: 'invalid',
+  RETRY: 'retry',
+  HALT: 'halt',
+};
+
+const AUTOMATION_HEALTH = {
+  OK: 'ok',
+  FOLDER_UNREACHABLE: 'folder_unreachable',
+  NEEDS_ATTENTION: 'needs_attention',
+};
+
+// Esperas tras el 1.º, 2.º, 3.º y 4.º fallo; el 5.º fallo deja el ítem en 'failed'
+const AUTOMATION_RETRY = {
+  delaysMs: [60000, 300000, 900000, 3600000],
+  maxAttempts: 5,
+};
+
+const AUTOMATION_ATTEMPTS_RETENTION_DAYS = 90;
+
 const BCRYPT_ROUNDS = 12;
 const JWT_EXPIRY_SECONDS = 8 * 60 * 60; // 8 horas
 const ENCRYPTION_KEY_BYTES = 32;
@@ -121,6 +154,11 @@ module.exports = {
   ERROR_CATEGORIES,
   RETRY,
   BATCH_DEFAULTS,
+  AUTOMATION_ITEM_STATUSES,
+  AUTOMATION_OUTCOMES,
+  AUTOMATION_HEALTH,
+  AUTOMATION_RETRY,
+  AUTOMATION_ATTEMPTS_RETENTION_DAYS,
   BCRYPT_ROUNDS,
   JWT_EXPIRY_SECONDS,
   ENCRYPTION_KEY_BYTES,

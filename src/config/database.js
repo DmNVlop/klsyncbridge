@@ -381,6 +381,73 @@ function runMigrations(db) {
         db.prepare('ALTER TABLE jobs ADD COLUMN example_schema_api_id TEXT').run();
       }
     },
+
+    // v12: motor de automatizaciones (fase 1) — disparador + pasos, cola por archivo e historial
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS automations (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          trigger_type TEXT NOT NULL,
+          trigger_config TEXT NOT NULL,
+          health_state TEXT NOT NULL DEFAULT 'ok',
+          health_message TEXT,
+          last_success_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS automation_steps (
+          id TEXT PRIMARY KEY,
+          automation_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
+          position INTEGER NOT NULL,
+          step_type TEXT NOT NULL,
+          config TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_automation_steps_automation ON automation_steps(automation_id, position);
+
+        CREATE TABLE IF NOT EXISTS work_items (
+          id TEXT PRIMARY KEY,
+          automation_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
+          item_key TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          fingerprint TEXT,
+          status TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          next_retry_at TEXT,
+          last_http_status INTEGER,
+          last_result_status TEXT,
+          last_message TEXT,
+          external_ref TEXT,
+          external_version INTEGER,
+          requested_by TEXT,
+          meta TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_work_items_key ON work_items(automation_id, item_key);
+        CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(automation_id, status);
+        CREATE INDEX IF NOT EXISTS idx_work_items_retry ON work_items(status, next_retry_at);
+
+        CREATE TABLE IF NOT EXISTS work_item_attempts (
+          id TEXT PRIMARY KEY,
+          work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+          attempted_at TEXT NOT NULL,
+          fingerprint TEXT,
+          outcome TEXT NOT NULL,
+          http_status INTEGER,
+          result_status TEXT,
+          message TEXT,
+          external_ref TEXT,
+          external_version INTEGER,
+          duration_ms INTEGER,
+          triggered_by TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_work_item_attempts_item ON work_item_attempts(work_item_id, attempted_at);
+      `);
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {
