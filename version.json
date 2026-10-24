@@ -1,5 +1,5 @@
 {
-  "version": "2.1.6",
-  "release_date": "2026-08-06",
-  "changelog": "- Destino Archivo: schema de ejemplo seleccionable y persistente para el panel de mapeo de campos (paso 3)"
+  "version": "2.2.0",
+  "release_date": "2026-10-24",
+  "changelog": "- Actualizacion radical de la aplicacion, IMPORTACION de XML"
 }
