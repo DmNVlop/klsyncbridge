@@ -1,17 +1,43 @@
+# Política del repo: el repositorio ES el paquete que descargan las fábricas
+# (update.bat baja el ZIP de la rama). Solo se versiona lo que se despliega
+# y los manuales de uso; nada técnico, de arquitectura ni de diseño.
+
 # ── Dependencias ──────────────────────────────────────────────
 node_modules/
 
 # ── Datos de runtime (generados por setup.js, nunca en repo) ──
 /data/
 /logs/
+*.db
+*.db-shm
+*.db-wal
 
-# ── Entorno local ─────────────────────────────────────────────
+# ── Secretos y entorno (no puede fallar) ──────────────────────
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*credentials*.json
+*service-account*.json
+settings.local.json
 
-# ── Documentación interna de desarrollo ───────────────────────
+# ── Documentación técnica, de arquitectura y diseño (solo local)
+/README.md
+/CLAUDE.md
+/AGENTS.md
+/TODO.md
 project-doc/
+# docs/: solo manuales de uso
+/docs/*
+!/docs/INSTALL.md
+!/docs/USER_GUIDE.md
+!/docs/manuales/
 
-# ── Release locales ───────────────────────
+# ── Release locales ───────────────────────────────────────────
 release/
 
 # ── Herramientas de agentes IA ────────────────────────────────
@@ -27,10 +53,6 @@ temp/
 Thumbs.db
 .DS_Store
 desktop.ini
-
-# ── SQLite WAL (nunca en repo) ────────────────────────────────
-*.db-shm
-*.db-wal
 
 # ── Archivo suelto de query de desarrollo ────────────────────
 query
