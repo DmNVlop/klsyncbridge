@@ -4,8 +4,8 @@ const crypto = require('crypto');
 const { getDb } = require('../../config/database');
 const { encryptObject, decryptObject } = require('../../services/encryption.service');
 const { NotFoundError, ConflictError } = require('../../utils/errors');
-const { resolveAuth } = require('../../services/auth-resolver.service');
 const { requestWithRetry } = require('../../services/http.service');
+const { loadApiConfig, buildRequestAuth } = require('../../core/resources/api-config-resolver');
 
 function now() { return new Date().toISOString(); }
 
@@ -43,13 +43,7 @@ function getApiConfig(id) {
 }
 
 function getApiConfigRaw(id) {
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM api_configs WHERE id = ?').get(id);
-  if (!row) throw new NotFoundError('Configuración de API');
-  row.auth_config = row.auth_config ? decryptObject(row.auth_config) : null;
-  row.headers_json = row.headers_json ? JSON.parse(row.headers_json) : null;
-  row.payload_schema = row.payload_schema ? JSON.parse(row.payload_schema) : null;
-  return row;
+  return loadApiConfig(id);
 }
 
 function createApiConfig(data) {
@@ -118,11 +112,10 @@ function deleteApiConfig(id) {
 
 async function testApiConfig(id) {
   const config = getApiConfigRaw(id);
-  const authResult = await resolveAuth(config);
+  const authResult = await buildRequestAuth(config);
   const headers = {
     'Content-Type': 'application/json',
     ...authResult.headers,
-    ...(config.headers_json || {}),
   };
   const body = config.payload_schema || undefined;
   try {

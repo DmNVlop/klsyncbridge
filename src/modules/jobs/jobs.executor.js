@@ -9,7 +9,7 @@ const {
   diffWithSnapshot, buildPassthroughItems, buildApiPayload, chunkArray,
 } = require('./jobs.payload');
 const { getSourceService } = require('../../services/sources/index');
-const { resolveAuth } = require('../../services/auth-resolver.service');
+const { buildRequestAuth } = require('../../core/resources/api-config-resolver');
 const { requestWithRetry } = require('../../services/http.service');
 const { exportItemsToFiles } = require('../../services/file-export.service');
 const { SYNC_MODES, OP_MODES, BATCH_DEFAULTS, DESTINATION_MODES } = require('../../config/constants');
@@ -179,20 +179,12 @@ async function executeJob(jobId) {
       const batchSize = job.batch_size || BATCH_DEFAULTS.SIZE;
       const batchConcurrency = job.batch_concurrency || BATCH_DEFAULTS.CONCURRENCY;
 
-      const authResult = await resolveAuth(apiConfig);
+      const authResult = await buildRequestAuth(apiConfig);
       const baseHeaders = {
         'Content-Type': 'application/json',
         ...authResult.headers,
-        ...(apiConfig.headers_json || {}),
       };
-
-      const onTokenExpired = apiConfig.auth_type === 'login'
-        ? async () => {
-          const { resolveAuth: ra } = require('../../services/auth-resolver.service');
-          const newAuth = await ra(apiConfig);
-          return newAuth.headers;
-        }
-        : null;
+      const { onTokenExpired } = authResult;
 
       const apiPayload = hasChanges ? buildApiPayload(itemsToProcess, job.item_type) : [];
       const batches = hasChanges ? chunkArray(apiPayload, batchSize) : [[]];
