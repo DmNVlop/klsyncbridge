@@ -51,6 +51,15 @@ async function main() {
   await initScheduler();
   logger.info('Scheduler iniciado');
 
+  // Motor de automatizaciones (carpeta vigilada ⇒ pasos); un fallo aquí no tumba los jobs ya en marcha
+  const automationsEngine = require('./modules/automations/automations.engine');
+  try {
+    await automationsEngine.start();
+    logger.info('Motor de automatizaciones iniciado');
+  } catch (engineErr) {
+    logger.error('No se pudo iniciar el motor de automatizaciones', { error: engineErr.message });
+  }
+
   // Cleanup automático de integration_logs al arrancar (TTL 90 días por defecto)
   try {
     const { runScheduledCleanup } = require('./modules/logs/logs.service');
@@ -70,6 +79,7 @@ async function main() {
     logger.info(`Señal ${signal} recibida. Cerrando...`);
 
     stopScheduler();
+    automationsEngine.stopAll();
 
     server.close(() => {
       logger.info('Servidor HTTP cerrado');

@@ -60,6 +60,24 @@ function emitLogNew(log) {
   broadcast('log.new_entry', log);
 }
 
+function emitAutomationHealthChanged({ id, health_state, health_message }) {
+  broadcast('automation.health_changed', { id, health_state, health_message });
+}
+
+function emitWorkItemChanged(item) {
+  broadcast('work_item.changed', {
+    id: item.id,
+    automation_id: item.automation_id,
+    display_name: item.display_name,
+    status: item.status,
+    attempts: item.attempts,
+    last_message: item.last_message,
+    external_ref: item.external_ref,
+    external_version: item.external_version,
+    updated_at: item.updated_at,
+  });
+}
+
 module.exports = {
   emitter,
   addClient,
@@ -68,4 +86,6 @@ module.exports = {
   emitJobExecutionStarted,
   emitJobExecutionFinished,
   emitLogNew,
+  emitAutomationHealthChanged,
+  emitWorkItemChanged,
 };

@@ -109,6 +109,9 @@ function watchFolder(options, handlers, { logger }) {
     if (stopped) return Promise.resolve();
     if (sweeping) return sweeping;
     sweeping = (async () => {
+      // El watcher se crea ANTES de leer la carpeta: un archivo que llegue durante readdir dispara su evento y no se pierde.
+      // Con la carpeta caída no se intenta (evita un aviso por barrido); al volver se crea tras el readdir.
+      if (health !== HEALTH_UNREACHABLE) ensureWatcher();
       let entries;
       try {
         entries = await fsp.readdir(folderPath, { withFileTypes: true });
