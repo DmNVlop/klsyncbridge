@@ -1,22 +1,10 @@
 'use strict';
 
-const axios = require('axios');
 const { ERROR_CATEGORIES, RETRY } = require('../config/constants');
 const { KLSyncBridgeError } = require('../utils/errors');
+const { sendOnce, summarizeBody } = require('../core/http/send-once');
+const { classifyHttpError } = require('../core/http/classify');
 const logger = require('./logger.service');
-
-function categorizeError(error) {
-  if (!error.response) {
-    // Sin respuesta: timeout, ECONNREFUSED, ENOTFOUND, etc.
-    return ERROR_CATEGORIES.CONNECTION_ERROR;
-  }
-  const status = error.response.status;
-  if (status === 401) return ERROR_CATEGORIES.AUTH_ERROR;
-  if (status === 429) return ERROR_CATEGORIES.RATE_LIMIT;
-  if (status >= 400 && status < 500) return ERROR_CATEGORIES.CLIENT_ERROR;
-  if (status >= 500) return ERROR_CATEGORIES.SERVER_ERROR;
-  return ERROR_CATEGORIES.SERVER_ERROR;
-}
 
 function shouldGiveUp(category, attempt, startTime) {
   if (category === ERROR_CATEGORIES.CONNECTION_ERROR) {
@@ -41,59 +29,24 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function summarizeBody(data) {
-  if (data === null || data === undefined) return null;
-  if (Array.isArray(data)) return { _type: 'array', count: data.length, sample: data.slice(0, 2) };
-  if (typeof data === 'object') return data;
-  return String(data).slice(0, 500);
-}
-
-function byteSize(data) {
-  if (!data) return 0;
-  try { return Buffer.byteLength(typeof data === 'string' ? data : JSON.stringify(data)); } catch { return -1; }
-}
-
 async function requestWithRetry(config, { onTokenExpired } = {}) {
   let attempt = 0;
   const startTime = Date.now();
 
   while (true) {
     attempt++;
-    const attemptStart = Date.now();
-
-    logger.info('API request enviado', {
-      method: config.method?.toUpperCase(),
-      url: config.url,
-      attempt,
-      payload_bytes: byteSize(config.data),
-      payload: summarizeBody(config.data),
-    });
-
     try {
-      const response = await axios({ ...config, timeout: config.timeout || 30000 });
-      const duration_ms = Date.now() - attemptStart;
-
-      logger.info('API response recibida', {
-        method: config.method?.toUpperCase(),
-        url: config.url,
-        http_status: response.status,
-        duration_ms,
-        response_bytes: byteSize(response.data),
-        response: summarizeBody(response.data),
-      });
-
-      return response;
+      return await sendOnce(config, { attempt });
     } catch (error) {
-      const category = categorizeError(error);
+      const category = classifyHttpError(error);
       const status = error.response?.status;
-      const duration_ms = Date.now() - attemptStart;
 
       logger.warn('Request fallido', {
         attempt,
         category,
         http_status: status,
         url: config.url,
-        duration_ms,
+        duration_ms: error.durationMs,
         error: error.message,
         response_body: error.response?.data ? summarizeBody(error.response.data) : undefined,
       });
@@ -126,4 +79,4 @@ async function requestWithRetry(config, { onTokenExpired } = {}) {
   }
 }
 
-module.exports = { requestWithRetry, categorizeError };
+module.exports = { requestWithRetry, categorizeError: classifyHttpError };
