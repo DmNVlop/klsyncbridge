@@ -26,6 +26,7 @@
 13. [Referencia: Expresiones avanzadas](#13-referencia-expresiones-avanzadas)
 14. [Ejemplo completo de integración](#14-ejemplo-completo-de-integración)
 15. [Solución de problemas comunes](#15-solución-de-problemas-comunes)
+16. [Automatizaciones: carpeta de XML de Ardis](#16-automatizaciones-carpeta-de-xml-de-ardis)
 
 ---
 
@@ -930,6 +931,97 @@ El Job leerá todos los registros de SQL y los enviará como `upsert` a la API, 
 3. Verificar que el servicio KLSyncBridge está en ejecución (el servidor debe estar encendido para que el scheduler funcione).
 
 > El scheduler solo funciona mientras el servidor está activo. Si el equipo se apaga o el servicio se detiene, las ejecuciones programadas que caigan en ese periodo no se recuperan.
+
+---
+
+## 16. Automatizaciones: carpeta de XML de Ardis
+
+**Dónde:** menú superior → **Automatizaciones**
+
+### 16.1 Qué hace
+
+Una automatización vigila una carpeta y sube a la plataforma ArdisApp cada XML de optimización de Ardis que aparezca en ella; la plataforma crea el pedido en **Órdenes V2**. Es continua: no tiene horario.
+
+- El archivo **se queda donde está**. KLSyncBridge no lo mueve ni lo borra.
+- Un archivo con el **mismo contenido** no se vuelve a subir. Si el contenido **cambia**, se sube de nuevo solo.
+- Si un archivo se está copiando todavía o lo tiene abierto otro programa, se espera a que termine.
+
+### 16.2 Crear la configuración de API
+
+**Dónde:** menú superior → **APIs** → **+ Nueva API**
+
+| Campo | Valor |
+|---|---|
+| **Nombre** | `Plataforma ArdisApp` (o el que prefieras) |
+| **URL Base** | URL de la plataforma, sin ruta: `https://plataforma.tuempresa.com` |
+| **Endpoint Path** y **Método** | Obligatorios en el formulario: `/orders-v2/external/ardis-xml-imports` y `POST`. La automatización usa su propia ruta, así que no cambian el envío |
+| **Tipo de autenticación** | `API Key` (ver [sección 11](#11-referencia-tipos-de-autenticación-de-api)) |
+| **Nombre del header/param** | `X-API-Key` |
+| **Ubicación** | `Header` |
+| **Valor** | La clave generada en la plataforma con el scope `orders-v2:import-xml` |
+
+La clave se guarda cifrada. Una clave sin ese scope hará que la automatización pase a «Necesita revisión» (ver 16.5).
+
+### 16.3 Crear la automatización
+
+1. **Automatizaciones** → **+ Nueva automatización**.
+2. **Datos generales**: nombre, descripción opcional y casilla **Activa**.
+3. **Disparador** → tipo **Carpeta vigilada**:
+
+   | Campo | Descripción |
+   |---|---|
+   | **Carpeta a vigilar** | Ruta local (`C:\Ardis\Salida`) o de red (`\\servidor\ardis\salida`). Solo esa carpeta, sin subcarpetas |
+   | **Patrón de archivos** | Qué archivos cuentan. Comodines `*` y `?`. Por defecto `*.xml` |
+   | **Segundos sin cambios para dar el archivo por completo** | Tiempo que el archivo debe permanecer sin cambios antes de enviarse (2-300, por defecto 10) |
+   | **Revisión completa de la carpeta cada (segundos)** | Cada cuánto se revisa la carpeta entera por si se ha perdido algún aviso (15-3600, por defecto 60) |
+
+4. Pulsar **Probar carpeta**. En verde se indica si hay acceso y cuántos archivos cumplen el patrón; en rojo, el motivo.
+5. **Pasos** → elegir **Importar XML de Ardis a Órdenes V2** → **+ Añadir paso** y elegir la **Configuración de API** de 16.2. La **Ruta del endpoint** ya trae el valor correcto.
+6. **Guardar**. Los errores se muestran junto al campo o en el paso afectado. Al crear una automatización nueva, la pantalla pasa sola a su modo de edición.
+
+### 16.4 Estados de un archivo
+
+| Estado | Significado | Qué hacer |
+|---|---|---|
+| **Pendiente** | Detectado y en cola | Nada |
+| **Procesando** | Enviándose en este momento | Nada |
+| **Reintento programado** | Fallo temporal (red, servidor caído). Se reintenta a 1 min, 5 min, 15 min y 1 h | Nada. Si agota los intentos pasa a Fallido |
+| **Subido** | Aceptado por la plataforma. Se ven el nº de pedido y la versión | Nada |
+| **Rechazado** | La plataforma lo rechaza por una regla de negocio (por ejemplo, pedido ya en producción o cerrado) | Leer el mensaje. Si se corrige el XML y cambia su contenido, se envía de nuevo solo |
+| **No válido** | No es un XML de Ardis válido o supera 5 MB | Volver a generarlo desde Ardis |
+| **Fallido** | Agotó los reintentos | Resolver la causa y pulsar **Reintentar** |
+
+En la lista de automatizaciones, **Pendientes** suma Pendiente + Procesando + Reintento programado, y **Errores** suma Fallido + Rechazado + No válido.
+
+### 16.5 Salud de la automatización
+
+| Salud | Significado |
+|---|---|
+| **Correcto** | Todo funciona |
+| **Carpeta inaccesible** | No se puede leer la carpeta. Se recupera sola cuando vuelve el acceso |
+| **Necesita revisión** | Problema de configuración que afecta a todos los archivos (clave inválida o sin permiso, URL incorrecta). La automatización se detiene y los archivos esperan |
+
+### 16.6 Reintentar y Reanudar
+
+Al abrir una automatización (**Editar**) se ve debajo la tabla de **Archivos**: filtro por estado, buscador por nombre, 25 por página, nº de pedido, versión y último mensaje. Se actualiza en vivo.
+
+- **Historial** (por archivo): todos los intentos con su resultado, mensaje, duración y quién los lanzó (el sistema o un usuario).
+- **Reintentar** (por archivo): pide confirmación y vuelve a poner el archivo en cola.
+- **Reanudar** (banner rojo «Necesita revisión»): tras corregir la causa, reactiva la automatización. Guardar la automatización o su configuración de API también la reanuda.
+
+Eliminar una automatización borra también sus archivos registrados y su historial; los XML de la carpeta no se tocan. Una configuración de API que use alguna automatización no se puede eliminar.
+
+### 16.7 Cuenta del servicio para carpetas de red
+
+Por defecto el servicio de Windows usa la cuenta **LocalSystem**, que **no accede a rutas de red (UNC)**. Para vigilar `\\servidor\recurso`:
+
+1. Abrir `services.msc`.
+2. Doble clic en el servicio **KLSyncBridge** → pestaña **Iniciar sesión**.
+3. Marcar **Esta cuenta** y escribir una cuenta de dominio o local con permiso de **lectura** sobre el recurso.
+4. Aceptar y **reiniciar el servicio**.
+5. Repetir **Probar carpeta** en la automatización.
+
+Las unidades de red mapeadas (`Z:\`) no funcionan con el servicio; usar siempre la ruta UNC.
 
 ---
 
