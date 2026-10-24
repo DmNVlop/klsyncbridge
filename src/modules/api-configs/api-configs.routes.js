@@ -29,7 +29,10 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const data = validate(updateApiConfigSchema, req.body);
-    return success(res, svc.updateApiConfig(req.params.id, data));
+    const updated = svc.updateApiConfig(req.params.id, data);
+    // Las automatizaciones detenidas por token/URL se reanudan al corregir su configuración
+    require('../automations/automations.engine').resumeByApiConfig(req.params.id);
+    return success(res, updated);
   } catch (err) { return fromError(res, err); }
 });
 

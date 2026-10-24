@@ -107,6 +107,10 @@ function deleteApiConfig(id) {
   if (!row) throw new NotFoundError('Configuración de API');
   const jobs = db.prepare('SELECT id FROM jobs WHERE api_config_id = ? AND is_active = 1').all(id);
   if (jobs.length > 0) throw new ConflictError('No se puede eliminar una API config con jobs activos');
+  const { findAutomationIdsByApiConfig } = require('../automations/automations.service');
+  if (findAutomationIdsByApiConfig(id).length > 0) {
+    throw new ConflictError('No se puede eliminar una API config usada por automatizaciones');
+  }
   db.prepare('DELETE FROM api_configs WHERE id = ?').run(id);
 }
 
