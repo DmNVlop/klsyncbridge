@@ -3,8 +3,9 @@
 const express = require('express');
 const { login, getMe } = require('./auth.service');
 const { requireAuth } = require('./auth.middleware');
-const { success, fromError } = require('../../utils/response');
-const { validate, loginSchema } = require('../../utils/validators');
+const { isFirstRunRequired, completeFirstRun } = require('./first-run.service');
+const { success, created, fromError } = require('../../utils/response');
+const { validate, loginSchema, firstRunSchema } = require('../../utils/validators');
 
 const router = express.Router();
 
@@ -13,6 +14,24 @@ router.post('/login', async (req, res) => {
     const { username, password } = validate(loginSchema, req.body);
     const result = await login(username, password);
     return success(res, result);
+  } catch (err) {
+    return fromError(res, err);
+  }
+});
+
+// Primer acceso (sin auth): solo desde localhost (middleware global) y solo sin usuario maestro.
+router.get('/first-run', (req, res) => {
+  try {
+    return success(res, isFirstRunRequired());
+  } catch (err) {
+    return fromError(res, err);
+  }
+});
+
+router.post('/first-run', (req, res) => {
+  try {
+    const { password } = validate(firstRunSchema, req.body);
+    return created(res, completeFirstRun(password));
   } catch (err) {
     return fromError(res, err);
   }

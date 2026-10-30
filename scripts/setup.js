@@ -2,7 +2,7 @@
 
 /**
  * Script de setup inicial de KLSyncBridge.
- * Genera clave de cifrado, inicializa DB, crea usuario master.
+ * Genera clave de cifrado, inicializa DB y JWT secret (el usuario master se crea en la UI).
  * Ejecutar: node scripts/setup.js
  */
 
@@ -13,9 +13,7 @@ process.chdir(path.join(__dirname, '..'));
 
 const { generateKey } = require('../src/services/encryption.service');
 const { initDatabase, getDb } = require('../src/config/database');
-const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { BCRYPT_ROUNDS } = require('../src/config/constants');
 
 async function setup() {
   console.log('🚀 Iniciando setup de KLSyncBridge...\n');
@@ -42,31 +40,10 @@ async function setup() {
     console.log('ℹ️  JWT secret ya existe, se mantiene.');
   }
 
-  // 4. Crear usuario master si no existe
+  // 4. Usuario master: se crea en la UI en el primer acceso (contraseña elegida por el técnico)
   const masterRow = db.prepare("SELECT id FROM users WHERE is_master = 1").get();
   if (!masterRow) {
-    const masterUsername = 'admin';
-    const masterPassword = crypto.randomBytes(8).toString('hex'); // contraseña aleatoria
-    const hashedPassword = bcrypt.hashSync(masterPassword, BCRYPT_ROUNDS);
-    const masterId = crypto.randomUUID();
-    const now = new Date().toISOString();
-
-    db.prepare(`
-      INSERT INTO users (id, username, password, role, is_master, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, 'admin', 1, 1, ?, ?)
-    `).run(masterId, masterUsername, hashedPassword, now, now);
-
-    db.prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('master_user_id', ?)")
-      .run(masterId);
-
-    console.log('\n╔══════════════════════════════════════════╗');
-    console.log('║         CREDENCIALES INICIALES           ║');
-    console.log('╠══════════════════════════════════════════╣');
-    console.log(`║  Usuario:    ${masterUsername.padEnd(28)}║`);
-    console.log(`║  Contraseña: ${masterPassword.padEnd(28)}║`);
-    console.log('╠══════════════════════════════════════════╣');
-    console.log('║  ⚠️  CAMBIA LA CONTRASEÑA INMEDIATAMENTE  ║');
-    console.log('╚══════════════════════════════════════════╝\n');
+    console.log('ℹ️  Sin usuario master: créalo en la primera visita a la UI.');
   } else {
     console.log('ℹ️  Usuario master ya existe, se mantiene.');
   }

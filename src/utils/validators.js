@@ -18,6 +18,10 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const firstRunSchema = z.object({
+  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200),
+});
+
 const createUserSchema = z.object({
   username: z.string().min(3, 'Mínimo 3 caracteres').max(100).trim().regex(/^[a-zA-Z0-9_.-]+$/, 'Solo letras, números, guiones y puntos'),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(200),
@@ -194,6 +198,7 @@ function validate(schema, data) {
 module.exports = {
   validate,
   loginSchema,
+  firstRunSchema,
   createUserSchema,
   updateUserSchema,
   createConnectionSchema,
