@@ -1,25 +1,10 @@
 'use strict';
 
 const { z } = require('zod');
-const path = require('path');
-const fs = require('fs');
+const { resolveEnvFilePath, loadEnvFile } = require('./env-file');
 
 // Cargar .env si existe
-const envPath = path.join(__dirname, '../../.env');
-if (fs.existsSync(envPath)) {
-  const lines = fs.readFileSync(envPath, 'utf8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim();
-    if (!(key in process.env)) {
-      process.env[key] = value;
-    }
-  }
-}
+loadEnvFile(resolveEnvFilePath());
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
