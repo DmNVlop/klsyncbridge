@@ -76,6 +76,23 @@
           Iniciar sesión
         </button>
       </form>
+      <form id="first-run-form" class="space-y-4 hidden">
+        <p class="text-sm text-slate-400">Primer acceso: elige la contraseña del administrador <span class="font-mono text-white">admin</span>. Mínimo 8 caracteres.</p>
+        <div>
+          <label class="block text-sm font-medium text-slate-400 mb-1.5">Contraseña nueva</label>
+          <input id="first-run-password" type="password" autocomplete="new-password" required minlength="8"
+            class="w-full px-4 py-2.5 rounded-lg bg-base border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-400 mb-1.5">Repite la contraseña</label>
+          <input id="first-run-confirm" type="password" autocomplete="new-password" required minlength="8"
+            class="w-full px-4 py-2.5 rounded-lg bg-base border border-white/10 text-white font-mono text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors">
+        </div>
+        <button type="submit" id="first-run-btn"
+          class="w-full py-2.5 px-4 bg-accent hover:bg-blue-500 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          Crear administrador y entrar
+        </button>
+      </form>
     </div>
 
     <p class="text-center text-slate-600 text-xs mt-6">KLSyncBridge <span id="app-version">v1.0.0</span></p>
@@ -91,6 +108,47 @@
     if (localStorage.getItem('sb_token')) {
       window.location.href = '/dashboard';
     }
+
+    function showError(message) {
+      const errorMsg = document.getElementById('error-msg');
+      errorMsg.textContent = message;
+      errorMsg.classList.remove('hidden');
+    }
+
+    // Sin usuario maestro: se muestra el formulario de primer acceso en lugar del login
+    fetch('/api/auth/first-run').then(r => r.json()).then(d => {
+      if (!d.ok || !d.data.required) return;
+      document.getElementById('login-form').classList.add('hidden');
+      document.getElementById('first-run-form').classList.remove('hidden');
+      document.querySelector('h2').textContent = 'Primer acceso';
+    }).catch(() => showError('Error de conexión con el servidor'));
+
+    document.getElementById('first-run-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('first-run-btn');
+      const password = document.getElementById('first-run-password').value;
+      const confirm = document.getElementById('first-run-confirm').value;
+      document.getElementById('error-msg').classList.add('hidden');
+      if (password !== confirm) return showError('Las contraseñas no coinciden');
+
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/first-run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        const data = await res.json();
+        if (!data.ok) return showError(data.error || 'No se pudo crear el administrador');
+        localStorage.setItem('sb_token', data.data.token);
+        localStorage.setItem('sb_user', JSON.stringify(data.data.user));
+        window.location.href = '/dashboard';
+      } catch (err) {
+        showError('Error de conexión con el servidor');
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
