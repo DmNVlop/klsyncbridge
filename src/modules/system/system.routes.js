@@ -13,6 +13,7 @@ const axios = require('axios');
 const { getUpdateMode } = require('./updaters/update-mode');
 const { manifestUrlFor, compareVersions } = require('./updaters/manifest');
 const { runLegacyZipUpdate } = require('./updaters/legacy-zip.updater');
+const { runInstallerUpdate } = require('./updaters/installer.updater');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -273,8 +274,7 @@ router.post('/update', async (req, res) => {
   const mode = getUpdateMode();
   log(`▶ Modo de actualización: ${mode}`);
   if (mode === 'installer') {
-    log('❌ Modo installer aún no disponible');
-    return res.end();
+    return runInstallerUpdate({ res, log, localVersion });
   }
   return runLegacyZipUpdate({ res, log, localVersion, runScript });
 });
