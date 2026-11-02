@@ -1,5 +1,5 @@
 {
-  "version": "2.2.0",
-  "release_date": "2026-10-24",
-  "changelog": "- Actualizacion radical de la aplicacion, IMPORTACION de XML"
+  "version": "2.3.0",
+  "release_date": "2026-11-02",
+  "changelog": "- Instalador autocontenido (sin Node, Python ni Build Tools)\n- Primer acceso: la contraseña del admin se elige en la UI\n- Actualización con el instalador, verificada por sha256"
 }
