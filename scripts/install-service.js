@@ -41,7 +41,13 @@ const svc = new Service({
   description: 'KLSyncBridge - Servicio de integración de datos',
   script: path.join(__dirname, '../src/app.js'),
   nodeOptions: [],
-  env: { name: 'NODE_ENV', value: 'production' },
+  // El Setup pasa la ubicación de los datos (ProgramData); las instalaciones antiguas no la tienen.
+  env: [
+    { name: 'NODE_ENV', value: 'production' },
+    ...['KLSYNC_ENV_FILE', 'DATA_DIR', 'LOG_DIR']
+      .filter((name) => process.env[name])
+      .map((name) => ({ name, value: process.env[name] })),
+  ],
 });
 
 svc.on('install', () => {
