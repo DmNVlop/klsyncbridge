@@ -39,6 +39,9 @@ project-doc/
 
 # ── Release locales ───────────────────────────────────────────
 release/
+# Salida del workflow de release (build/app y el Setup)
+/build/
+/dist/
 
 # ── Herramientas de agentes IA ────────────────────────────────
 .agents/

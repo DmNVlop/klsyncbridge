@@ -1,0 +1,116 @@
+name: release
+
+# Al subir un tag vX.Y.Z construye KLSyncBridge-Setup-X.Y.Z.exe y lo publica en el GitHub Release
+# junto con version.json (setupUrl + sha256). Un tag con '-' (vX.Y.Z-rc.N) publica un prerelease,
+# que no es releases/latest: las fábricas no lo ven.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '24.22.1'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Comprobar que el tag coincide con version.json
+        shell: pwsh
+        run: |
+          $v = (Get-Content version.json | ConvertFrom-Json).version
+          $tag = '${{ github.ref_name }}'
+          if ($tag -notmatch "^v$([regex]::Escape($v))(-.+)?$") { throw "Tag $tag no coincide con version.json ($v)" }
+
+      - name: Tests
+        run: |
+          npm ci
+          npm test
+
+      - name: Preparar build/app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/app | Out-Null
+          foreach ($d in 'src','public','scripts','docs') { Copy-Item $d build/app/$d -Recurse }
+          foreach ($f in 'package.json','package-lock.json','version.json') { Copy-Item $f build/app/ }
+          Push-Location build/app
+          npm ci --omit=dev
+          Pop-Location
+
+      - name: node.exe portátil (verificado con SHASUMS256)
+        shell: pwsh
+        run: |
+          $v = "v$env:NODE_VERSION"
+          $zip = "node-$v-win-x64.zip"
+          Invoke-WebRequest "https://nodejs.org/dist/$v/$zip" -OutFile $zip
+          Invoke-WebRequest "https://nodejs.org/dist/$v/SHASUMS256.txt" -OutFile SHASUMS256.txt
+          $expected = (Select-String -Path SHASUMS256.txt -Pattern " $zip$").Line.Split(' ')[0]
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "SHA256 de $zip no coincide" }
+          Expand-Archive $zip -DestinationPath node-dist
+          Copy-Item "node-dist/node-$v-win-x64/node.exe" build/app/node.exe
+
+      # Las pruebas corren dentro de build/app: DATA_DIR/LOG_DIR fuera, para que nada de runtime se empaquete.
+      - name: Prueba de humo con el node.exe empaquetado
+        shell: pwsh
+        working-directory: build/app
+        run: |
+          $env:DATA_DIR = "$env:RUNNER_TEMP\klsb\data"; $env:LOG_DIR = "$env:RUNNER_TEMP\klsb\logs"
+          ./node.exe -e "const D=require('better-sqlite3'); new D(':memory:').prepare('select 1').get(); console.log('better-sqlite3 OK', process.versions.modules)"
+          ./node.exe -e "require('node-windows'); console.log('node-windows OK')"
+          ./node.exe -e "require('./src/server'); console.log('server OK')"
+
+      # Espera fija justificada: install-service.js termina por temporizador y no hay evento que esperar;
+      # si el servicio no aparece, Get-Service falla y el job también.
+      - name: Prueba de servicio (instalar y quitar con node-windows)
+        shell: pwsh
+        working-directory: build/app
+        run: |
+          $env:DATA_DIR = "$env:RUNNER_TEMP\klsb\data"; $env:LOG_DIR = "$env:RUNNER_TEMP\klsb\logs"
+          ./node.exe scripts/setup.js
+          ./node.exe scripts/install-service.js
+          Start-Sleep -Seconds 5
+          $s = Get-Service klsyncbridge.exe -ErrorAction Stop
+          Write-Output "Servicio: $($s.Status)"
+          ./node.exe scripts/uninstall-service.js
+          Remove-Item src/daemon -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Comprobar que build/app no lleva datos ni secretos
+        shell: pwsh
+        working-directory: build/app
+        run: |
+          $bad = @('data','logs','.env','src/daemon') | Where-Object { Test-Path $_ }
+          $bad += Get-ChildItem -Recurse -File -Include '*.key','*.db','.env*' -Exclude '.env.example' |
+            Where-Object { $_.FullName -notmatch '\\node_modules\\' } | ForEach-Object { $_.FullName }
+          if ($bad) { throw "build/app contiene datos de runtime o secretos: $($bad -join ', ')" }
+
+      - name: Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compilar el Setup
+        shell: pwsh
+        run: |
+          $v = (Get-Content version.json | ConvertFrom-Json).version
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" installer/klsyncbridge.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC falló ($LASTEXITCODE)" }
+          node scripts/build-release-manifest.js
+
+      - name: Publicar en el Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $notes = (Get-Content version.json | ConvertFrom-Json).changelog
+          $ghArgs = @('release', 'create', $tag, (Get-ChildItem dist/*.exe).FullName, 'dist/version.json', '--title', $tag, '--notes', "$notes")
+          if ($tag -match '-') { $ghArgs += '--prerelease' }
+          gh @ghArgs
