@@ -60,25 +60,14 @@ Dentro de la carpeta del proyecto, hacer **clic derecho** en `instalar.bat` y se
 El script hace todo automáticamente:
 
 1. Instala las dependencias de Node.js
-2. Genera la clave de cifrado, la base de datos y el usuario administrador inicial
+2. Genera la clave de cifrado y la base de datos
 3. Registra e inicia el servicio Windows
 4. Crea un acceso directo en el **Escritorio** y en el **Menú Inicio**
 5. Abre el navegador en `http://localhost:3847` al terminar
 
-Durante el proceso aparecerán las credenciales iniciales:
+La primera vez aparece la pantalla **Primer acceso**: elegir la contraseña del usuario `admin` (mínimo 8 caracteres) y entrar. Solo aparece desde el propio equipo y mientras no exista el administrador.
 
-```
-╔══════════════════════════════════════════╗
-║         CREDENCIALES INICIALES           ║
-╠══════════════════════════════════════════╣
-║  Usuario:    admin                       ║
-║  Contraseña:             ║
-╠══════════════════════════════════════════╣
-║  ⚠️  CAMBIA LA CONTRASEÑA INMEDIATAMENTE  ║
-╚══════════════════════════════════════════╝
-```
-
-> **IMPORTANTE:** Anotar esas credenciales antes de cerrar la ventana. La contraseña no se puede recuperar después.
+> Con el instalador `KLSyncBridge-Setup-X.Y.Z.exe` (recomendado, ver `INSTALL.md`) no hace falta este script: el resultado es el mismo y no requiere Node.js, Python ni Build Tools.
 
 A partir de aquí el servicio corre solo. Arranca automáticamente con Windows — no hace falta tener ninguna consola abierta.
 

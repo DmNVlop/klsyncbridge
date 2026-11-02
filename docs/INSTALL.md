@@ -4,6 +4,36 @@ Dirigida al técnico instalador. Tiempo estimado: 15-30 minutos.
 
 ---
 
+## Instalación con el instalador (recomendada)
+
+Un único `KLSyncBridge-Setup-X.Y.Z.exe` instala todo: lleva su propio Node.js y las dependencias ya compiladas. **No hace falta instalar Node.js, Python ni Visual C++ Build Tools.** Tiempo estimado: 2-3 minutos.
+
+1. Descargar `KLSyncBridge-Setup-X.Y.Z.exe`:
+   - desde la plataforma ArdisApp: **Configuración › Instalaciones › KLSyncBridge**, o
+   - desde GitHub: https://github.com/DmNVlop/klsyncbridge/releases/latest
+2. Clic derecho en el `.exe` › **Ejecutar como administrador**.
+   - Si Windows SmartScreen avisa de «aplicación no reconocida»: **Más información** › **Ejecutar de todas formas**.
+3. Al terminar se abre `http://localhost:3847` con la pantalla **Primer acceso**: elegir la contraseña del usuario `admin` (mínimo 8 caracteres) y entrar. Esta pantalla solo aparece desde el propio equipo y solo mientras no exista el administrador.
+
+Dónde queda cada cosa:
+
+| Qué | Dónde |
+|---|---|
+| Programa (incluye `node.exe`) | `C:\Program Files\KLSyncBridge\` |
+| Configuración (`.env`), base de datos, clave de cifrado | `C:\ProgramData\KLSyncBridge\` (`.env`, `data\`) |
+| Logs (incluido el de cada actualización, `setup-X.Y.Z.log`) | `C:\ProgramData\KLSyncBridge\logs\` |
+| Servicio Windows | `KLSyncBridge` (arranque automático) |
+
+**Actualizar:** en la interfaz, **Sistema › Buscar actualización › Actualizar**. Descarga el instalador nuevo, comprueba que no está alterado (sha256) y lo ejecuta en segundo plano; el servicio se reinicia solo en uno o dos minutos y los datos se conservan. También se puede ejecutar a mano el Setup de la versión nueva.
+
+**Desde una instalación antigua (carpeta con `instalar.bat`, v2.2.0 o anterior):** ejecutar el Setup sin desinstalar nada. Detecta el servicio antiguo, lo para, lo sustituye y copia `data\` y `.env` a `ProgramData` (solo si allí aún no hay datos). Se entra con el usuario y la contraseña de siempre. La carpeta antigua queda intacta como copia de seguridad: se puede borrar cuando se compruebe que todo funciona.
+
+**Desinstalar:** Configuración de Windows › **Aplicaciones** › KLSyncBridge › Desinstalar. Pregunta si borrar también los datos (`ProgramData\KLSyncBridge`); por defecto se conservan, y una instalación posterior los reutiliza.
+
+---
+
+> Lo que sigue describe la **instalación con script o manual (avanzada)**: solo para instalaciones antiguas o si no se puede usar el instalador.
+
 ## Requisitos previos
 
 | Requisito | Versión mínima | Notas |
@@ -75,7 +105,7 @@ Dirigida al técnico instalador. Tiempo estimado: 15-30 minutos.
 
 ---
 
-## Instalación rápida (método recomendado)
+## Instalación con script (`instalar.bat`)
 
 La forma más simple de instalar en un servidor cliente es usando el script incluido:
 
@@ -86,12 +116,10 @@ La forma más simple de instalar en un servidor cliente es usando el script incl
    - Verifica e instala Python 3.11 si no está presente.
    - Verifica e instala Visual C++ Build Tools 2022 si no están presentes.
    - Instala dependencias npm (compila `better-sqlite3`).
-   - Genera clave de cifrado, base de datos y usuario admin.
+   - Genera clave de cifrado y base de datos.
    - Registra e inicia el servicio Windows.
    - Crea acceso directo en el Escritorio y el Menú Inicio.
-4. Al terminar, anota las credenciales que aparecen en pantalla y abre el navegador automáticamente.
-
-> **IMPORTANTE:** Anotar el usuario y contraseña que muestra el script. No se pueden recuperar después.
+4. Al terminar abre el navegador en la pantalla **Primer acceso**: elegir ahí la contraseña del usuario `admin` (mínimo 8 caracteres).
 
 > **Nota sobre tiempos:** Si Python y/o Visual C++ Build Tools deben instalarse, el proceso puede tardar entre 10 y 25 minutos por las descargas. Es normal que el script parezca bloqueado durante ese tiempo.
 
@@ -131,9 +159,8 @@ node scripts/setup.js
 Este comando:
 - Genera la clave de cifrado en `data/encryption.key`
 - Crea la base de datos SQLite en `data/klsyncbridge.db`
-- Crea el usuario administrador inicial
 
-**Guardar las credenciales que muestra en pantalla.** No se pueden recuperar después.
+El usuario administrador (`admin`) no se crea aquí: su contraseña se elige en la pantalla **Primer acceso** al abrir la interfaz por primera vez desde el propio equipo.
 
 ### Paso 4 — (Opcional) Configurar puerto
 
@@ -167,7 +194,7 @@ Abrir el navegador en el servidor (o usar el acceso directo del Escritorio):
 http://localhost:3847
 ```
 
-Iniciar sesión con las credenciales del Paso 3.
+La primera vez aparece **Primer acceso**: elegir la contraseña de `admin` y entrar.
 
 ---
 
