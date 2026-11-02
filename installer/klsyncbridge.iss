@@ -37,8 +37,8 @@ Source: "..\build\app\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdi
 Name: "{commonappdata}\KLSyncBridge"
 
 [Run]
-Filename: "{app}\node.exe"; Parameters: """{app}\scripts\installer-setup.js"" ""{commonappdata}\KLSyncBridge"""; WorkingDir: "{app}"; StatusMsg: "Configurando el servicio KLSyncBridge..."; Flags: runhidden waituntilterminated
-Filename: "http://localhost:3847"; Description: "Abrir KLSyncBridge"; Flags: postinstall shellexec nowait skipifsilent
+; La post-instalación (installer-setup.js) se lanza desde [Code] para comprobar su código de salida.
+Filename: "http://localhost:3847"; Description: "Abrir KLSyncBridge"; Flags: postinstall shellexec nowait skipifsilent; Check: PostInstallSucceeded
 
 [UninstallRun]
 Filename: "{app}\node.exe"; Parameters: """{app}\scripts\uninstall-service.js"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallService"
@@ -47,6 +47,43 @@ Filename: "{app}\node.exe"; Parameters: """{app}\scripts\uninstall-service.js"""
 Type: filesandordirs; Name: "{app}\src\daemon"
 
 [Code]
+var
+  PostInstallOk: Boolean;
+
+function PostInstallSucceeded: Boolean;
+begin
+  Result := PostInstallOk;
+end;
+
+// [Run] ignora el código de salida: aquí se comprueba y, si falla, se avisa con la ruta del log.
+procedure RunPostInstall;
+var
+  ResultCode: Integer;
+  LogDir, LogFile: String;
+begin
+  LogDir := ExpandConstant('{commonappdata}\KLSyncBridge\logs');
+  LogFile := LogDir + '\installer-setup.log';
+  ForceDirectories(LogDir);
+  WizardForm.StatusLabel.Caption := 'Configurando el servicio KLSyncBridge...';
+  PostInstallOk := Exec(ExpandConstant('{cmd}'),
+      '/C ""' + ExpandConstant('{app}\node.exe') + '" "' + ExpandConstant('{app}\scripts\installer-setup.js') +
+      '" "' + ExpandConstant('{commonappdata}\KLSyncBridge') + '" > "' + LogFile + '" 2>&1"',
+      ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  if not PostInstallOk then
+  begin
+    Log('installer-setup.js falló. Código: ' + IntToStr(ResultCode) + '. Log: ' + LogFile);
+    SuppressibleMsgBox('Los ficheros se han copiado, pero no se pudo configurar el servicio KLSyncBridge (código ' +
+        IntToStr(ResultCode) + ').' + #13#10#13#10 + 'Revisa el log:' + #13#10 + LogFile + #13#10#13#10 +
+        'Vuelve a ejecutar el instalador o contacta con soporte.', mbError, MB_OK, IDOK);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RunPostInstall;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;

@@ -56,14 +56,15 @@ svc.on('install', () => {
   svc.start();
   console.log('✅ Servicio iniciado');
 
-  // sc failure necesita que SCM registre el servicio — esperar 3s
-  // El nombre en sc.exe es el campo 'name' del Service tal como queda en el registro
+  // sc failure necesita que SCM registre el servicio — esperar 3s.
+  // En SCM el servicio se llama como su ejecutable de node-windows (svc._exe = 'klsyncbridge.exe'),
+  // no como el nombre visible 'KLSyncBridge'.
   setTimeout(() => {
     try {
-      execSync('sc failure KLSyncBridge reset= 86400 actions= restart/5000/restart/10000/restart/30000', { stdio: 'inherit' });
+      execSync(`sc.exe failure "${svc._exe}" reset= 86400 actions= restart/5000/restart/10000/restart/30000`, { stdio: 'inherit' });
       console.log('✅ Configuración de recovery aplicada');
     } catch (err) {
-      console.warn('⚠️  No se pudo configurar recovery automáticamente:', err.message);
+      console.warn(`⚠️  No se pudo configurar el reinicio automático del servicio ${svc._exe}:`, err.message);
     }
 
     createShortcuts();
@@ -74,8 +75,10 @@ svc.on('install', () => {
   }, 3000);
 });
 
+// Código de salida distinto de 0: el Setup (installer-setup.js) lo detecta y avisa.
 svc.on('error', (err) => {
   console.error('❌ Error:', err);
+  process.exit(1);
 });
 
 svc.install();

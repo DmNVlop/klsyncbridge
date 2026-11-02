@@ -81,6 +81,9 @@ jobs:
           Start-Sleep -Seconds 5
           $s = Get-Service klsyncbridge.exe -ErrorAction Stop
           Write-Output "Servicio: $($s.Status)"
+          $recovery = sc.exe qfailure klsyncbridge.exe | Out-String
+          if ($recovery -notmatch 'RESTART') { throw "El servicio no tiene configurado el reinicio automático:`n$recovery" }
+          Write-Output "Reinicio automático: OK"
           ./node.exe scripts/uninstall-service.js
           Remove-Item src/daemon -Recurse -Force -ErrorAction SilentlyContinue
 
