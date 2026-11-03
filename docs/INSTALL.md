@@ -24,7 +24,9 @@ Dónde queda cada cosa:
 | Logs (incluido el de cada actualización, `setup-X.Y.Z.log`) | `C:\ProgramData\KLSyncBridge\logs\` |
 | Servicio Windows | `KLSyncBridge` (arranque automático) |
 
-**Actualizar:** en la interfaz, **Sistema › Buscar actualización › Actualizar**. Descarga el instalador nuevo, comprueba que no está alterado (sha256) y lo ejecuta en segundo plano; el servicio se reinicia solo en uno o dos minutos y los datos se conservan. También se puede ejecutar a mano el Setup de la versión nueva.
+**Actualizar:** KLSyncBridge comprueba solo si hay versión nueva (al minuto de arrancar y cada 6 horas) y, si la hay, muestra un aviso en todas las pantallas. Para instalarla: **Sistema › Actualizar ahora** (o **Buscar actualización** para comprobarlo en el momento). Descarga el instalador nuevo, comprueba que no está alterado (sha256) y lo ejecuta en segundo plano; el servicio se reinicia solo en uno o dos minutos, la página espera a que vuelva con la versión nueva y los datos se conservan. Si en 5 minutos no ha vuelto, la página lo avisa: revisar `C:\ProgramData\KLSyncBridge\logs` (`setup-*.log` e `installer-setup.log`). También se puede ejecutar a mano el Setup de la versión nueva.
+
+El instalador no termina hasta comprobar que el servicio responde (`http://localhost:3847/api/health`); si no responde en 60 segundos, muestra un error con la ruta de `installer-setup.log`.
 
 **Desde una instalación antigua (carpeta con `instalar.bat`, v2.2.0 o anterior):** ejecutar el Setup sin desinstalar nada. Detecta el servicio antiguo, lo para, lo sustituye y copia `data\` y `.env` a `ProgramData` (solo si allí aún no hay datos). Se entra con el usuario y la contraseña de siempre. La carpeta antigua queda intacta como copia de seguridad: se puede borrar cuando se compruebe que todo funciona.
 

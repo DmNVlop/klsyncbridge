@@ -50,7 +50,7 @@ function buildNav({ showUsername = false } = {}) {
     }
   }
 
-  // Check update en background — 2 veces al día, no bloquea
+  // Aviso de actualización: lee el último resultado del servidor, no bloquea
   setTimeout(checkUpdateBackground, 2000);
 }
 
@@ -158,16 +158,17 @@ const HEALTH_LABELS = Object.fromEntries(Object.entries(HEALTH_STATE).map(([key,
 
 // ─── Update checker ───────────────────────────────────────────────────────────
 
-const UPDATE_CHECK_INTERVAL = 12 * 60 * 60 * 1000; // 12 horas
-const LS_LAST_CHECK = 'sb_update_last_check';
-const LS_PENDING_VER = 'sb_update_pending'; // versión pendiente de instalar
+// El servidor comprueba las actualizaciones al arrancar y cada 6 h; aquí solo se lee su último resultado
+// (GET /api/update-status, sin salir a internet) y se pinta el aviso en todas las pantallas.
+const SS_BANNER_DISMISSED = 'sb_update_banner_dismissed'; // versión cuyo aviso se cerró en esta sesión
+const LEGACY_LS_KEYS = ['sb_update_last_check', 'sb_update_pending']; // del aviso antiguo (solo navegador)
 
-function _hasPendingUpdate() {
-  return !!localStorage.getItem(LS_PENDING_VER);
+function _storageGet(storage, key) {
+  try { return storage.getItem(key); } catch { return null; }
 }
 
-function _getPendingVersion() {
-  return localStorage.getItem(LS_PENDING_VER);
+function _storageSet(storage, key, value) {
+  try { storage.setItem(key, value); } catch { /* almacenamiento bloqueado: el aviso vuelve a salir */ }
 }
 
 // Pone el punto amber en el link "Sistema" del navbar
@@ -178,6 +179,7 @@ function _applyNavBadge() {
     a.style.position = 'relative';
     const dot = document.createElement('span');
     dot.className = '_upd_dot';
+    dot.title = 'Hay una versión nueva de KLSyncBridge';
     dot.style.cssText = 'position:absolute;top:2px;right:2px;width:7px;height:7px;border-radius:50%;background:#f59e0b;border:1.5px solid #0f1117';
     a.appendChild(dot);
   });
@@ -187,8 +189,20 @@ function _removeNavBadge() {
   document.querySelectorAll('._upd_dot').forEach(d => d.remove());
 }
 
+function dismissUpdateBanner(version) {
+  _storageSet(sessionStorage, SS_BANNER_DISMISSED, version);
+  const banner = document.getElementById('_ui_update_banner');
+  if (banner) banner.remove();
+}
+
 function _showUpdateBanner(version) {
   if (document.getElementById('_ui_update_banner')) return;
+  if (_storageGet(sessionStorage, SS_BANNER_DISMISSED) === version) return;
+
+  const isMaster = !!AUTH.getUser()?.is_master;
+  const action = isMaster
+    ? '<a href="/system" class="inline-block mt-2 text-xs text-amber-300 underline underline-offset-2 hover:text-white">Ir a Sistema para actualizar →</a>'
+    : '<p class="mt-2 text-xs text-amber-400/80">Avisa al administrador para que la instale desde Sistema.</p>';
 
   const banner = document.createElement('div');
   banner.id = '_ui_update_banner';
@@ -198,29 +212,25 @@ function _showUpdateBanner(version) {
       <div class="w-2 h-2 rounded-full bg-amber-400 mt-1.5 flex-shrink-0 animate-pulse"></div>
       <div class="flex-1 min-w-0">
         <p class="text-sm font-medium text-amber-300">Nueva versión disponible</p>
-        <p class="text-xs text-amber-400/80 mt-0.5 font-mono">v${version}</p>
-        <a href="/system" class="inline-block mt-2 text-xs text-amber-300 underline underline-offset-2 hover:text-white">Ir a Sistema para actualizar →</a>
+        <p class="text-xs text-amber-400/80 mt-0.5 font-mono">v${escapeHtml(version)}</p>
+        ${action}
       </div>
-      <button onclick="document.getElementById('_ui_update_banner').remove()" class="text-amber-500 hover:text-amber-300 text-lg leading-none flex-shrink-0">×</button>
+      <button id="_ui_update_banner_close" title="Ocultar este aviso hasta cerrar el navegador" class="text-amber-500 hover:text-amber-300 text-lg leading-none flex-shrink-0">×</button>
     </div>`;
   document.body.appendChild(banner);
+  document.getElementById('_ui_update_banner_close').addEventListener('click', () => dismissUpdateBanner(version));
 }
 
 // Activa todos los indicadores visuales de update pendiente
 function _activateUpdateIndicators(version) {
-  localStorage.setItem(LS_PENDING_VER, version);
   _applyNavBadge();
   _showUpdateBanner(version);
-
-  // Punto en la sección de Actualización dentro de system.html (si existe)
   const sectionDot = document.getElementById('_update_section_dot');
   if (sectionDot) sectionDot.classList.remove('hidden');
 }
 
-// Limpia todos los indicadores (llamar al actualizar o al entrar a /system)
+// Limpia todos los indicadores (al actualizar o cuando el servidor dice que no hay nada pendiente)
 function clearUpdateIndicators() {
-  localStorage.removeItem(LS_PENDING_VER);
-  localStorage.removeItem(LS_LAST_CHECK);
   _removeNavBadge();
   const banner = document.getElementById('_ui_update_banner');
   if (banner) banner.remove();
@@ -228,33 +238,24 @@ function clearUpdateIndicators() {
   if (sectionDot) sectionDot.classList.add('hidden');
 }
 
+/** Pinta u oculta el aviso según un resultado de comprobación (de /update-status o de /system/check-update). */
+function applyUpdateStatus(result) {
+  if (result && result.hasUpdate && result.latest) _activateUpdateIndicators(result.latest);
+  else clearUpdateIndicators();
+}
+
 async function checkUpdateBackground() {
   if (!AUTH.getToken()) return;
-
-  // Si ya hay una pendiente guardada → restaurar indicadores sin llamar al API
-  if (_hasPendingUpdate()) {
-    _applyNavBadge();
-    _showUpdateBanner(_getPendingVersion());
-    return;
-  }
-
-  const now       = Date.now();
-  const lastCheck = parseInt(localStorage.getItem(LS_LAST_CHECK) || '0', 10);
-  if (now - lastCheck < UPDATE_CHECK_INTERVAL) return;
-
-  localStorage.setItem(LS_LAST_CHECK, now);
-
+  LEGACY_LS_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch { /* sin almacenamiento */ } });
   try {
-    const res  = await API.get('/system/check-update');
-    const data = res.data;
-    if (!data.hasUpdate) return;
-    _activateUpdateIndicators(data.latest);
-  } catch {
-    // silencioso — es background
+    const res = await API.get('/update-status');
+    applyUpdateStatus(res.data);
+  } catch (err) {
+    console.warn('No se pudo leer el estado de actualizaciones:', err.message);
   }
 }
 
 window.UI = {
-  buildNav, toast, confirmDialog, statusBadge, formatDate, checkUpdateBackground, clearUpdateIndicators,
+  buildNav, toast, confirmDialog, statusBadge, formatDate, checkUpdateBackground, clearUpdateIndicators, applyUpdateStatus,
   escapeHtml, itemStatusBadge, healthBadge, ITEM_STATUS_LABELS, HEALTH_LABELS,
 };

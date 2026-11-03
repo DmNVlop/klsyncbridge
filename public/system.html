@@ -223,10 +223,7 @@
       document.getElementById('main-content').classList.remove('hidden');
       loadStatus();
       loadPrivilege();
-      // Restaurar punto de sección si hay update pendiente (antes de que clearUpdateIndicators lo limpie al actualizar)
-      if (localStorage.getItem('sb_update_pending')) {
-        document.getElementById('_update_section_dot').classList.remove('hidden');
-      }
+      loadUpdateSection();
     }
 
     let rawVisible = false;
@@ -284,6 +281,7 @@
           <span class="text-xs text-slate-600 ml-1">— El servicio Windows no está registrado</span>`;
         btnStart.disabled = true;
         btnStop.disabled  = true;
+        applyServiceManagementButtons(false);
         return;
       }
 
@@ -305,11 +303,27 @@
       // Habilitar/deshabilitar botones Start/Stop según estado real
       btnStart.disabled = data.state !== 'STOPPED';
       btnStop.disabled  = data.state !== 'RUNNING';
+      applyServiceManagementButtons(true);
 
       if (data.raw) {
         rawEl.textContent = data.raw;
         btnRaw.classList.remove('hidden');
       }
+    }
+
+    // Instalar solo si no está registrado; desinstalar/reinstalar solo si lo está
+    function applyServiceManagementButtons(installed) {
+      const rules = [
+        ['btn-install', !installed, 'El servicio ya está instalado. Usa «Reinstalar» para volver a registrarlo.'],
+        ['btn-uninstall', installed, 'El servicio no está instalado.'],
+        ['btn-reinstall', installed, 'El servicio no está instalado. Usa «Instalar».'],
+      ];
+      rules.forEach(([id, enabled, reason]) => {
+        const b = document.getElementById(id);
+        if (!b) return;
+        b.disabled = !enabled;
+        b.title = enabled ? '' : reason;
+      });
     }
 
     async function runServiceControl(action) {
@@ -389,22 +403,49 @@
       document.getElementById('update-' + state).classList.remove('hidden');
     }
 
+    // Versión instalada (siempre, sin internet) + último resultado de la comprobación periódica del servidor
+    async function loadUpdateSection() {
+      try {
+        const v = await API.get('/version');
+        document.getElementById('current-version').textContent = v.data.version;
+      } catch (e) {
+        console.warn('No se pudo leer la versión instalada:', e.message);
+      }
+      try {
+        const st = await API.get('/update-status');
+        if (st.data.status !== 'unknown') renderUpdateResult(st.data);
+      } catch (e) {
+        console.warn('No se pudo leer el estado de actualizaciones:', e.message);
+      }
+    }
+
+    function renderUpdateResult(d) {
+      document.getElementById('current-version').textContent = d.current;
+      UI.applyUpdateStatus(d);
+      const checked = d.checkedAt ? ` Comprobado: ${new Date(d.checkedAt).toLocaleString('es-ES')}.` : '';
+      if (d.status === 'update-available') {
+        document.getElementById('latest-version').textContent = `v${d.latest}`;
+        document.getElementById('release-date').textContent = d.release_date ? `(${d.release_date})` : '';
+        document.getElementById('changelog-text').textContent = d.changelog || '';
+        showUpdateState('available');
+      } else if (d.status === 'up-to-date') {
+        document.getElementById('update-ok-text').textContent = `Estás en la última versión (v${d.current}).${checked}`;
+        showUpdateState('ok');
+      } else if (d.status === 'no-release') {
+        document.getElementById('update-ok-text').textContent = `Todavía no hay ninguna versión publicada más reciente que la tuya (v${d.current}).${checked}`;
+        showUpdateState('ok');
+      } else {
+        showUpdateState('idle');
+        UI.toast('No se pudo consultar el servidor de actualizaciones. Revisa la conexión a internet del equipo.' + (d.error ? ` (${d.error})` : ''), 'error');
+      }
+    }
+
     async function checkUpdate() {
       showUpdateState('checking');
       document.getElementById('btn-check-update').disabled = true;
       try {
         const res = await API.get('/system/check-update');
-        const d = res.data;
-        document.getElementById('current-version').textContent = d.current;
-        if (!d.hasUpdate) {
-          document.getElementById('update-ok-text').textContent = `Estás en la última versión (v${d.current}).`;
-          showUpdateState('ok');
-        } else {
-          document.getElementById('latest-version').textContent = `v${d.latest}`;
-          document.getElementById('release-date').textContent = d.release_date ? `(${d.release_date})` : '';
-          document.getElementById('changelog-text').textContent = d.changelog || '';
-          showUpdateState('available');
-        }
+        renderUpdateResult(res.data);
       } catch (e) {
         showUpdateState('idle');
         UI.toast('No se pudo verificar: ' + e.message, 'error');
@@ -429,6 +470,7 @@
       updateLog.textContent = '';
 
       const token = AUTH.getToken();
+      const previousVersion = document.getElementById('current-version').textContent.trim();
       let finished = false;
 
       try {
@@ -455,41 +497,45 @@
       if (finished) {
         UI.clearUpdateIndicators();
         showUpdateState('restarting');
-        waitForRestart();
+        waitForRestart(previousVersion);
       } else {
         document.getElementById('btn-check-update').disabled = false;
         document.getElementById('btn-run-update').disabled = false;
       }
     }
 
-    function waitForRestart() {
-      let attempts = 0;
-      const maxAttempts = 40; // ~40 segundos
+    // Espera a que el servicio vuelva con una versión distinta (el Setup tarda 1-2 min en parar, instalar y arrancar).
+    // Consulta /api/health (sin auth); si el servicio vuelve con la misma versión al final del plazo, algo falló.
+    function waitForRestart(previousVersion) {
+      const startedAt = Date.now();
+      const maxWaitMs = 5 * 60 * 1000;
+      const restartingText = document.querySelector('#update-restarting p');
       const interval = setInterval(async () => {
-        attempts++;
+        const elapsed = Math.round((Date.now() - startedAt) / 1000);
+        restartingText.textContent = `Esperando a que el servicio vuelva con la versión nueva (${elapsed} s). La página se recargará sola.`;
         try {
-          const res = await fetch('/api/system/check-update', {
-            headers: { 'Authorization': 'Bearer ' + AUTH.getToken() },
-          });
+          const res = await fetch('/api/health', { cache: 'no-store' });
           if (res.ok) {
-            clearInterval(interval);
-            window.location.reload();
+            const body = await res.json();
+            if (body.data.version !== previousVersion) {
+              clearInterval(interval);
+              UI.toast(`Actualizado a v${body.data.version}`, 'success');
+              setTimeout(() => window.location.reload(), 1500);
+              return;
+            }
           }
         } catch {
-          // servidor aún reiniciando — ignorar
+          // servicio parado mientras se instala: seguir esperando
         }
-        if (attempts >= maxAttempts) {
+        if (Date.now() - startedAt >= maxWaitMs) {
           clearInterval(interval);
           showUpdateState('idle');
-          UI.toast('El servidor tardó demasiado en reiniciar. Recarga manualmente.', 'warning');
+          UI.toast('El servicio no ha vuelto con la versión nueva en 5 minutos. Revisa C:\\ProgramData\\KLSyncBridge\\logs (setup-*.log e installer-setup.log) o el estado del servicio arriba.', 'error');
+          loadStatus();
+          loadUpdateSection();
         }
-      }, 1000);
+      }, 2000);
     }
-
-    // Cargar versión actual al abrir la página
-    API.get('/system/check-update').then(r => {
-      document.getElementById('current-version').textContent = r.data.current;
-    }).catch(() => {});
 
     // ── Acciones de servicio ──────────────────────────────────────────────────
 
@@ -513,7 +559,6 @@
         appendLog(res.data?.output || 'Operación completada.\n');
         appendLog('\n✅ Completado.\n');
         UI.toast(`${cfg.title} completado`, 'success');
-        await loadStatus();
       } catch (e) {
         appendLog(`\n❌ Error: ${e.message}\n`);
         UI.toast('Error: ' + e.message, 'error');
@@ -521,6 +566,8 @@
         btnIds.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
         if (btn) btn.textContent = origText;
       }
+      // Después de reactivar: el estado real decide qué botones de gestión quedan activos
+      await loadStatus();
     }
   </script>
 </body>

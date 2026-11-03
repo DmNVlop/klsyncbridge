@@ -9,9 +9,9 @@ const { success, fromError } = require('../../utils/response');
 const { ForbiddenError, AppError } = require('../../utils/errors');
 const { getDb } = require('../../config/database');
 const logger = require('../../services/logger.service');
-const axios = require('axios');
 const { getUpdateMode } = require('./updaters/update-mode');
-const { manifestUrlFor, compareVersions } = require('./updaters/manifest');
+const { execSc } = require('../../utils/windows-console');
+const { updateChecker, localVersion } = require('./update-check.service');
 const { runLegacyZipUpdate } = require('./updaters/legacy-zip.updater');
 const { runInstallerUpdate } = require('./updaters/installer.updater');
 
@@ -43,7 +43,7 @@ router.get('/privilege', (req, res) => {
 // GET /api/system/status
 // Estado del servicio Windows via sc.exe
 router.get('/status', (req, res) => {
-  execFile('sc', ['query', 'klsyncbridge.exe'], { timeout: 8000 }, (err, stdout) => {
+  execSc(['query', 'klsyncbridge.exe'], { timeout: 8000 }, (err, stdout) => {
     if (err) {
       // sc devuelve exit 1060 si el servicio no existe
       const notInstalled = err.code === 1060 || (stdout && stdout.includes('1060'));
@@ -64,7 +64,7 @@ router.get('/status', (req, res) => {
 // Inicia el servicio Windows (sc start)
 router.post('/start', (req, res) => {
   logger.info('System: iniciando servicio Windows', { user: req.user.username });
-  execFile('sc', ['start', 'klsyncbridge.exe'], { timeout: 15000 }, (err, stdout, stderr) => {
+  execSc(['start', 'klsyncbridge.exe'], { timeout: 15000 }, (err, stdout, stderr) => {
     const text = (stdout || '') + (stderr || '');
     if (err) {
       const alreadyRunning = err.code === 1056 || text.includes('1056');
@@ -83,7 +83,7 @@ router.post('/start', (req, res) => {
 // Detiene el servicio Windows (sc stop)
 router.post('/stop', (req, res) => {
   logger.info('System: deteniendo servicio Windows', { user: req.user.username });
-  execFile('sc', ['stop', 'klsyncbridge.exe'], { timeout: 15000 }, (err, stdout, stderr) => {
+  execSc(['stop', 'klsyncbridge.exe'], { timeout: 15000 }, (err, stdout, stderr) => {
     const text = (stdout || '') + (stderr || '');
     if (err) {
       const alreadyStopped = err.code === 1062 || text.includes('1062');
@@ -126,7 +126,7 @@ function waitForState(targetState, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
     function check() {
-      execFile('sc', ['query', 'klsyncbridge.exe'], { timeout: 5000 }, (err, stdout) => {
+      execSc(['query', 'klsyncbridge.exe'], { timeout: 5000 }, (err, stdout) => {
         const text = stdout || '';
         if (targetState === 'STOPPED' && (err || text.includes('1060'))) {
           return resolve(); // servicio no existe = parado/desinstalado
@@ -237,26 +237,11 @@ router.post('/create-shortcuts', (req, res) => {
 
 // ── Update system ─────────────────────────────────────────────────────────────
 
-function localVersion() {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-    return pkg.version || '0.0.0';
-  } catch { return '0.0.0'; }
-}
-
 // GET /api/system/check-update
+// Comprobación manual (botón «Buscar actualización»); nunca falla: el estado va en `status`
 router.get('/check-update', async (req, res) => {
-  try {
-    const current = localVersion();
-    const mode = getUpdateMode();
-    const { data: manifest } = await axios.get(manifestUrlFor(mode), { timeout: 8000 });
-    const latest = manifest.version;
-    const hasUpdate = compareVersions(latest, current) > 0;
-    return success(res, { current, latest, hasUpdate, mode, changelog: manifest.changelog || '', release_date: manifest.release_date || '' });
-  } catch (err) {
-    logger.warn('System: check-update falló', { error: err.message });
-    return fromError(res, new AppError('No se pudo consultar el servidor de actualizaciones: ' + err.message, 'UPDATE_CHECK_FAILED', 502));
-  }
+  const result = await updateChecker.checkNow();
+  return success(res, result);
 });
 
 // POST /api/system/update

@@ -74,6 +74,8 @@ async function runInstallerUpdate({ res, log, localVersion }) {
     log('✅ Descarga verificada');
 
     log(`▶ Lanzando el instalador (log: ${logPath}). El servicio se reiniciará solo.`);
+    // La UI espera esta línea para pasar a «esperando reinicio» (mismo texto que el final de legacy-zip).
+    log(`✅ Actualización completada: instalando v${manifest.version}, el servicio vuelve en 1-2 minutos.`);
     res.end();
     const child = spawn('cmd.exe', ['/d', '/s', '/c', buildSetupCommand(setupPath, logPath)], {
       detached: true,

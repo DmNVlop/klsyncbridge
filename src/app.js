@@ -60,6 +60,10 @@ async function main() {
     logger.error('No se pudo iniciar el motor de automatizaciones', { error: engineErr.message });
   }
 
+  // Comprobación de actualizaciones: al minuto de arrancar y cada 6 h (el aviso de la UI lee el resultado)
+  const { updateChecker } = require('./modules/system/update-check.service');
+  const stopUpdateChecks = updateChecker.startPeriodicChecks();
+
   // Cleanup automático de integration_logs al arrancar (TTL 90 días por defecto)
   try {
     const { runScheduledCleanup } = require('./modules/logs/logs.service');
@@ -79,6 +83,7 @@ async function main() {
     logger.info(`Señal ${signal} recibida. Cerrando...`);
 
     stopScheduler();
+    stopUpdateChecks();
     automationsEngine.stopAll();
 
     server.close(() => {
