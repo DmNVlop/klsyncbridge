@@ -226,6 +226,14 @@
               <label class="block text-xs font-medium text-slate-400 mb-1">Carpeta destino</label>
               <input id="j-output-dir" type="text" class="inp" placeholder="C:\SyncBridge\exports">
               <p class="text-xs text-slate-500 mt-1">Ruta absoluta en el servidor donde corre SyncBridge.</p>
+              <div id="j-output-access" class="hidden mt-3">
+                <label class="block text-xs font-medium text-slate-400 mb-1">Acceso</label>
+                <div class="flex items-center gap-2">
+                  <select id="j-output-credential" class="inp"></select>
+                  <button type="button" id="j-output-test" class="px-3 py-2 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs whitespace-nowrap">Probar carpeta</button>
+                </div>
+                <p id="j-output-test-result" class="hidden text-xs mt-1"></p>
+              </div>
             </div>
             <div>
               <label class="block text-xs font-medium text-slate-400 mb-1">Delimitador CSV</label>
@@ -764,6 +772,7 @@
   </main>
 
   <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
   <script>
     AUTH.requireAuth();
     let currentStep = 1, editingId = null, sqlFields = [], fieldMaps = [], apiConfigs = [];
@@ -798,6 +807,8 @@
         });
       } catch(e){}
 
+      await loadNetworkCredentials();
+
       // Si editando, cargar datos
       if (editingId) {
         try {
@@ -819,6 +830,8 @@
           document.getElementById('j-file-format-csv').checked = formats.includes('csv');
           document.getElementById('j-file-format-json').checked = formats.includes('json');
           document.getElementById('j-output-dir').value = j.output_dir || '';
+          document.getElementById('j-output-credential').value = j.output_credential_id || '';
+          refreshOutputAccess({ silent: true });
           document.getElementById('j-csv-delimiter').value = j.csv_delimiter || ';';
           document.getElementById('j-file-retention').value = j.file_retention || 'keep_all';
           document.getElementById('j-sched-type').value = j.schedule_type;
@@ -1531,6 +1544,7 @@
           fileFormatCsv: document.getElementById('j-file-format-csv').checked,
           fileFormatJson: document.getElementById('j-file-format-json').checked,
           outputDir: document.getElementById('j-output-dir').value.trim(),
+          outputCredentialId: document.getElementById('j-output-credential').value,
           csvDelimiter: document.getElementById('j-csv-delimiter').value,
           fileRetention: document.getElementById('j-file-retention').value,
           schedType: document.getElementById('j-sched-type').value,
@@ -1608,6 +1622,8 @@
       document.getElementById('j-file-format-csv').checked = f.fileFormatCsv !== false;
       document.getElementById('j-file-format-json').checked = Boolean(f.fileFormatJson);
       document.getElementById('j-output-dir').value = f.outputDir || '';
+      document.getElementById('j-output-credential').value = f.outputCredentialId || '';
+      refreshOutputAccess({ silent: true });
       document.getElementById('j-csv-delimiter').value = f.csvDelimiter || ';';
       document.getElementById('j-file-retention').value = f.fileRetention || 'keep_all';
 
@@ -1650,6 +1666,76 @@
     document.addEventListener('change', () => { if (!editingId) saveDraft(); });
     // ──────────────────────────────────────────────────────────────
 
+    // ─── Credencial de red de la carpeta destino ───
+    const UNC_PATH_RE = /^\\\\[^\\]+\\[^\\]+/;
+
+    async function loadNetworkCredentials() {
+      const sel = document.getElementById('j-output-credential');
+      sel.innerHTML = '<option value="">Cuenta del servicio</option>';
+      try {
+        const r = await API.get('/network-credentials');
+        (r.data || []).forEach(c => {
+          sel.innerHTML += `<option value="${UI.escapeHtml(c.id)}">${UI.escapeHtml(c.name)} (${UI.escapeHtml((c.domain ? c.domain + '\\' : '') + c.username)})</option>`;
+        });
+      } catch (e) {
+        UI.toast('No se pudieron cargar las credenciales de red: ' + e.message, 'error');
+      }
+    }
+
+    // Credencial elegida solo si la ruta es UNC; si no, null (cuenta del servicio).
+    function getOutputCredentialId() {
+      const dir = document.getElementById('j-output-dir').value.trim();
+      const id = document.getElementById('j-output-credential').value;
+      return UNC_PATH_RE.test(dir) && id ? id : null;
+    }
+
+    function refreshOutputAccess({ silent = false } = {}) {
+      const dir = document.getElementById('j-output-dir').value.trim();
+      const isUnc = UNC_PATH_RE.test(dir);
+      const sel = document.getElementById('j-output-credential');
+      const box = document.getElementById('j-output-access');
+      if (!isUnc && sel.value && !silent) {
+        sel.value = '';
+        UI.toast('La ruta ya no es de red: se ha quitado la credencial elegida', 'warning');
+      }
+      box.classList.toggle('hidden', !isUnc);
+      const btn = document.getElementById('j-output-test');
+      const noCredential = !sel.value;
+      btn.disabled = noCredential;
+      btn.classList.toggle('opacity-50', noCredential);
+      btn.title = noCredential
+        ? 'Elige una credencial para probar la carpeta; sin credencial se usaría la cuenta del servicio y la prueba no la admite'
+        : 'Conecta con la carpeta usando la credencial elegida, lista su contenido y comprueba que se puede escribir';
+    }
+
+    async function testOutputFolder() {
+      const result = document.getElementById('j-output-test-result');
+      const btn = document.getElementById('j-output-test');
+      btn.disabled = true;
+      try {
+        const res = await API.post('/network-credentials/test', {
+          path: document.getElementById('j-output-dir').value.trim(),
+          credentialId: document.getElementById('j-output-credential').value,
+          checkWrite: true,
+        });
+        const d = res.data;
+        const steps = (d.steps || []).map(s => `${s.ok ? '✓' : '✗'} ${UI.escapeHtml(s.name)}${s.message ? ' — ' + UI.escapeHtml(s.message) : ''}`).join('<br>');
+        result.className = `text-xs mt-1 ${d.ok ? 'text-emerald-400' : 'text-red-400'}`;
+        result.innerHTML = `<strong>${UI.escapeHtml(d.message || (d.ok ? 'Prueba correcta' : 'Prueba fallida'))}</strong><br>${steps}`;
+        UI.toast(d.ok ? 'Carpeta accesible y con escritura' : (d.message || 'La prueba ha fallado'), d.ok ? 'success' : 'error');
+      } catch (err) {
+        result.className = 'text-xs mt-1 text-red-400';
+        result.textContent = err.message;
+        UI.toast('Error: ' + err.message, 'error');
+      } finally {
+        refreshOutputAccess({ silent: true });
+      }
+    }
+
+    document.getElementById('j-output-dir').addEventListener('input', () => refreshOutputAccess());
+    document.getElementById('j-output-credential').addEventListener('change', () => refreshOutputAccess());
+    document.getElementById('j-output-test').addEventListener('click', testOutputFolder);
+
     async function saveJob() {
       const maps = getMapRows();
       if (maps.length === 0) { alert('Añade al menos un mapeo de campo'); return; }
@@ -1684,6 +1770,7 @@
         destination_mode: destinationMode,
         file_formats: fileFormats || null,
         output_dir: document.getElementById('j-output-dir').value.trim() || null,
+        output_credential_id: getOutputCredentialId(),
         csv_delimiter: document.getElementById('j-csv-delimiter').value || ';',
         file_retention: document.getElementById('j-file-retention').value,
         example_schema_api_id: destinationMode === 'file' ? (document.getElementById('j-example-schema').value || null) : null,
