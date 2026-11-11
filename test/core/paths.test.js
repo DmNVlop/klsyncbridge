@@ -47,3 +47,16 @@ test('describeFsError: mensaje en español y pista de cuenta solo en UNC', () =>
 test('sha256 de un buffer', () => {
   assert.equal(sha256(Buffer.from('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 });
+
+test('describeFsError: unidad mapeada no visible, UNC sin credencial y con credencial', () => {
+  assert.equal(
+    describeFsError({ code: 'ENOENT' }, 'Z:\\datos', { driveMissing: true }),
+    'No se puede acceder a la carpeta: unidad mapeada no visible para el servicio; usa \\\\servidor\\recurso.',
+  );
+  // driveMissing solo aplica a rutas con letra de unidad
+  assert.doesNotMatch(describeFsError({ code: 'ENOENT' }, '\\\\srv\\rec', { driveMissing: true }), /unidad mapeada/);
+  const noCredential = describeFsError({ code: 'UNKNOWN' }, '\\\\srv\\rec');
+  assert.match(noCredential, /Asigna una credencial de red o cambia la cuenta del servicio/);
+  const withCredential = describeFsError({ code: 'EACCES' }, '\\\\srv\\rec', { hasCredential: true });
+  assert.equal(withCredential, 'No se puede acceder a la carpeta: acceso denegado.');
+});

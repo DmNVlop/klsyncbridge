@@ -67,15 +67,30 @@ const FS_ERROR_MESSAGES = {
   EHOSTUNREACH: 'el servidor de red no responde',
   ENETUNREACH: 'la red no está disponible',
   EINVAL: 'ruta no válida',
+  UNKNOWN: 'error de red desconocido',
 };
 
 const SERVICE_ACCOUNT_HINT = 'Si es una ruta de red, el servicio debe ejecutarse con una cuenta con permisos sobre ella (LocalSystem no accede a carpetas de red).';
+const ASSIGN_CREDENTIAL_HINT = 'Asigna una credencial de red o cambia la cuenta del servicio (LocalSystem no accede a carpetas de red).';
+const MAPPED_DRIVE_REASON = 'unidad mapeada no visible para el servicio; usa \\\\servidor\\recurso';
+const CREDENTIAL_SENSITIVE_CODES = new Set(['UNKNOWN', 'EACCES', 'EPERM']);
 
-/** Error del sistema de archivos ⇒ mensaje en español para la UI (con la pista de la cuenta del servicio en rutas UNC). */
-function describeFsError(err, folderPath) {
-  const reason = FS_ERROR_MESSAGES[err && err.code] || (err && err.message) || 'error desconocido';
+/**
+ * Error del sistema de archivos ⇒ mensaje en español para la UI. Función pura: no hace I/O.
+ * @param {object} err
+ * @param {string} folderPath
+ * @param {{ hasCredential?: boolean, driveMissing?: boolean }} [options]
+ *   `driveMissing`: lo calcula el llamador (la raíz de la unidad con letra no existe para el servicio).
+ */
+function describeFsError(err, folderPath, { hasCredential = false, driveMissing = false } = {}) {
+  const code = err && err.code;
+  if (driveMissing && folderPath && /^[a-zA-Z]:/.test(folderPath)) {
+    return `No se puede acceder a la carpeta: ${MAPPED_DRIVE_REASON}.`;
+  }
+  const reason = FS_ERROR_MESSAGES[code] || (err && err.message) || 'error desconocido';
   const base = `No se puede acceder a la carpeta: ${reason}.`;
-  return folderPath && isUncPath(folderPath) ? `${base} ${SERVICE_ACCOUNT_HINT}` : base;
+  if (!folderPath || !isUncPath(folderPath) || hasCredential) return base;
+  return `${base} ${CREDENTIAL_SENSITIVE_CODES.has(code) ? ASSIGN_CREDENTIAL_HINT : SERVICE_ACCOUNT_HINT}`;
 }
 
 module.exports = { normalizeItemKey, isUncPath, isAbsoluteWindowsPath, resolveConfiguredPath, matchesPattern, describeFsError };
