@@ -3,7 +3,7 @@
 /**
  * Prueba manual de credenciales de red (UNC) con WNetAddConnection2W.
  *
- * Uso:  node scripts/dev/probe-unc.js <\servidor\recurso> <usuario>
+ * Uso:  node scripts/dev/probe-unc.js <\\servidor\recurso> <usuario>
  * La contraseña se lee SOLO de la variable de entorno KLSYNC_PROBE_PASSWORD
  * (nunca por argumento ni se imprime).
  *
@@ -15,25 +15,15 @@
 
 const os = require('os');
 const fs = require('fs');
-const winNet = require('../../src/core/network/win-net');
-
-// Mapa local de códigos Win32 habituales (aún no existe net-errors).
-const WIN32_NAMES = {
-  0: 'OK',
-  5: 'ACCESS_DENIED',
-  53: 'BAD_NETPATH',
-  67: 'BAD_NET_NAME',
-  86: 'INVALID_PASSWORD',
-  1219: 'SESSION_CREDENTIAL_CONFLICT',
-  1326: 'LOGON_FAILURE',
-};
+const { createWinNet } = require('../../src/core/network/win-net');
+const { classifyWinError } = require('../../src/core/network/net-errors');
 
 function out(line) {
   process.stdout.write(`${line}\n`);
 }
 
 function describe(code) {
-  return WIN32_NAMES[code] ? `${code} (${WIN32_NAMES[code]})` : String(code);
+  return code === 0 ? '0 (OK)' : `${code} [${classifyWinError(code).kind}] ${classifyWinError(code).message}`;
 }
 
 function printHelp() {
@@ -42,8 +32,8 @@ function printHelp() {
 }
 
 async function main() {
-  const [remoteName, user] = process.argv.slice(2);
-  if (!remoteName || !user) {
+  const [root, username] = process.argv.slice(2);
+  if (!root || !username) {
     printHelp();
     return 2;
   }
@@ -56,9 +46,9 @@ async function main() {
   out(`Cuenta de ejecución: ${os.userInfo().username}`);
   out(`USERDOMAIN: ${process.env.USERDOMAIN || '(no definido)'}`);
 
+  const winNet = createWinNet();
   if (!winNet.isAvailable()) {
-    const err = winNet.getLoadError();
-    out(`1) Carga de koffi: FALLO (${err ? err.message : 'desconocido'})`);
+    out('1) Carga de koffi: FALLO (no disponible en este equipo)');
     return 1;
   }
   out('1) Carga de koffi: OK');
@@ -66,14 +56,14 @@ async function main() {
   let connected = false;
   let failed = false;
   try {
-    const addCode = winNet.addConnection({ remoteName, user, password });
-    out(`2) addConnection: ${addCode === 0 ? 'OK' : 'FALLO'} código ${describe(addCode)}`);
+    const addCode = winNet.connect({ root, username, password });
+    out(`2) connect: ${addCode === 0 ? 'OK' : 'FALLO'} código ${describe(addCode)}`);
     if (addCode !== 0) {
       failed = true;
     } else {
       connected = true;
       try {
-        const entries = await fs.promises.readdir(remoteName);
+        const entries = await fs.promises.readdir(root);
         out(`3) readdir: OK, ${entries.length} entradas`);
         out(`   Primeras 10: ${entries.slice(0, 10).join(', ') || '(vacío)'}`);
       } catch (err) {
@@ -83,16 +73,16 @@ async function main() {
     }
   } catch (err) {
     failed = true;
-    out(`2) addConnection: FALLO (${err.message})`);
+    out(`2) connect: FALLO (${err.message})`);
   } finally {
     if (connected) {
       try {
-        const cancelCode = winNet.cancelConnection(remoteName, { force: true });
-        out(`4) cancelConnection: ${cancelCode === 0 ? 'OK' : 'FALLO'} código ${describe(cancelCode)}`);
+        const cancelCode = winNet.disconnect(root, { force: true });
+        out(`4) disconnect: ${cancelCode === 0 ? 'OK' : 'FALLO'} código ${describe(cancelCode)}`);
         if (cancelCode !== 0) failed = true;
       } catch (err) {
         failed = true;
-        out(`4) cancelConnection: FALLO (${err.message})`);
+        out(`4) disconnect: FALLO (${err.message})`);
       }
     }
   }
