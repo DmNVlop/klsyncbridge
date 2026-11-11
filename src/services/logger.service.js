@@ -57,9 +57,41 @@ const logger = winston.createLogger({
   exitOnError: false,
 });
 
-// Sanitiza headers de Authorization para no loguear tokens
-function sanitizeHttpMeta(meta) {
-  if (!meta) return meta;
+// Claves cuyo valor nunca debe llegar al log. `token` queda fuera a propósito: enmascararlo rompería logs útiles
+// (p. ej. «token renovado»); los tokens de Authorization se enmascaran por su cabecera.
+const MASKED_KEYS = new Set(['password', 'pass', 'pwd', 'secret']);
+const MAX_DEPTH = 4;
+
+function isPlainObject(value) {
+  if (value === null || typeof value !== 'object') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+// Copia recursiva (sin mutar) que enmascara claves sensibles. Solo recorre objetos planos y arrays:
+// Error, Date, Buffer… pasan tal cual. Más allá de MAX_DEPTH se trunca para no dejar pasar una clave profunda.
+function maskDeep(value, depth, ancestors) {
+  const isArray = Array.isArray(value);
+  if (!isArray && !isPlainObject(value)) return value;
+  if (ancestors.has(value)) return '[circular]';
+  if (depth > MAX_DEPTH) return '[truncado]';
+  ancestors.add(value);
+  let result;
+  if (isArray) {
+    result = value.map((item) => maskDeep(item, depth + 1, ancestors));
+  } else {
+    result = {};
+    for (const [key, item] of Object.entries(value)) {
+      result[key] = MASKED_KEYS.has(key.toLowerCase()) ? '****' : maskDeep(item, depth + 1, ancestors);
+    }
+  }
+  ancestors.delete(value);
+  return result;
+}
+
+// Sanea el meta de log: enmascara Authorization y las claves sensibles (también anidadas)
+function sanitizeMeta(meta) {
+  if (!isPlainObject(meta)) return meta;
   const safe = { ...meta };
   if (safe.headers && safe.headers.Authorization) {
     safe.headers = { ...safe.headers, Authorization: 'Bearer ****' };
@@ -67,15 +99,18 @@ function sanitizeHttpMeta(meta) {
   if (safe.headers && safe.headers.authorization) {
     safe.headers = { ...safe.headers, authorization: 'Bearer ****' };
   }
-  return safe;
+  return maskDeep(safe, 0, new Set());
 }
 
 const secureLogger = {
-  error: (message, meta) => logger.error(message, sanitizeHttpMeta(meta)),
-  warn: (message, meta) => logger.warn(message, sanitizeHttpMeta(meta)),
-  info: (message, meta) => logger.info(message, sanitizeHttpMeta(meta)),
-  debug: (message, meta) => logger.debug(message, sanitizeHttpMeta(meta)),
-  logExecution: (data) => logger.info('job_execution', sanitizeHttpMeta(data)),
+  error: (message, meta) => logger.error(message, sanitizeMeta(meta)),
+  warn: (message, meta) => logger.warn(message, sanitizeMeta(meta)),
+  info: (message, meta) => logger.info(message, sanitizeMeta(meta)),
+  debug: (message, meta) => logger.debug(message, sanitizeMeta(meta)),
+  logExecution: (data) => logger.info('job_execution', sanitizeMeta(data)),
 };
+
+// `sanitizeMeta` se expone para poder probarlo
+secureLogger.sanitizeMeta = sanitizeMeta;
 
 module.exports = secureLogger;
