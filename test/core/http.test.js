@@ -60,3 +60,27 @@ test('requestWithRetry sigue devolviendo la respuesta en 2xx (regresión jobs)',
   assert.equal(res.status, 200);
   assert.deepEqual(res.data, { ok: true });
 });
+
+test('requestWithRetry: 401 tras renovar el token se abandona (una sola renovación, sin bucle)', async (t) => {
+  const server = await startFakeServer(() => ({ status: 401, json: { error: 'unauthorized' } }));
+  t.after(() => server.close());
+  let renewals = 0;
+  const onTokenExpired = async () => { renewals++; return { Authorization: `Bearer t${renewals}` }; };
+  await assert.rejects(
+    requestWithRetry({ method: 'get', url: `${server.baseUrl}/x` }, { onTokenExpired }),
+    (err) => { assert.equal(err.category, 'AUTH_ERROR'); return true; },
+  );
+  assert.equal(renewals, 1);
+  assert.equal(server.requests.length, 2);
+  assert.equal(server.requests[1].headers.authorization, 'Bearer t1');
+});
+
+test('requestWithRetry: 401 y renovación correcta ⇒ devuelve la respuesta', async (t) => {
+  const server = await startFakeServer((req) => (req.headers.authorization === 'Bearer nuevo'
+    ? { status: 200, json: { ok: true } }
+    : { status: 401, json: {} }));
+  t.after(() => server.close());
+  const res = await requestWithRetry({ method: 'get', url: `${server.baseUrl}/x` }, { onTokenExpired: async () => ({ Authorization: 'Bearer nuevo' }) });
+  assert.equal(res.status, 200);
+  assert.equal(server.requests.length, 2);
+});

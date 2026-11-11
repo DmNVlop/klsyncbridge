@@ -31,6 +31,7 @@ function sleep(ms) {
 
 async function requestWithRetry(config, { onTokenExpired } = {}) {
   let attempt = 0;
+  let tokenRenewed = false;
   const startTime = Date.now();
 
   while (true) {
@@ -51,8 +52,10 @@ async function requestWithRetry(config, { onTokenExpired } = {}) {
         response_body: error.response?.data ? summarizeBody(error.response.data) : undefined,
       });
 
-      // 401 con auth tipo login: renovar token una vez
-      if (category === ERROR_CATEGORIES.AUTH_ERROR && onTokenExpired) {
+      // 401 con auth tipo login: renovar token UNA sola vez por petición.
+      // Un segundo 401 tras renovar = credenciales inválidas ⇒ se abandona (antes: bucle infinito).
+      if (category === ERROR_CATEGORIES.AUTH_ERROR && onTokenExpired && !tokenRenewed) {
+        tokenRenewed = true;
         logger.info('Token expirado. Renovando...');
         const newHeaders = await onTokenExpired();
         config.headers = { ...config.headers, ...newHeaders };
