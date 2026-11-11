@@ -67,6 +67,7 @@ jobs:
           $env:DATA_DIR = "$env:RUNNER_TEMP\klsb\data"; $env:LOG_DIR = "$env:RUNNER_TEMP\klsb\logs"
           ./node.exe -e "const D=require('better-sqlite3'); new D(':memory:').prepare('select 1').get(); console.log('better-sqlite3 OK', process.versions.modules)"
           ./node.exe -e "require('node-windows'); console.log('node-windows OK')"
+          ./node.exe -e "const k=require('koffi'); k.load('mpr.dll'); console.log('koffi OK')"
           ./node.exe -e "require('./src/server'); console.log('server OK')"
 
       # Espera fija justificada: install-service.js termina por temporizador y no hay evento que esperar;
