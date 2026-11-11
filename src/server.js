@@ -93,6 +93,7 @@ function createServer() {
     '/jobs': 'jobs.html',
     '/connections': 'connections.html',
     '/api-configs': 'api-configs.html',
+    '/network-credentials': 'network-credentials.html',
     '/logs': 'logs.html',
     '/users': 'users.html',
     '/settings': 'settings.html',

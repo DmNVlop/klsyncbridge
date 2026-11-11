@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: '/automations', label: 'Automatizaciones' },
   { href: '/connections', label: 'Conexiones' },
   { href: '/api-configs', label: 'APIs' },
+  { href: '/network-credentials', label: 'Credenciales de red' },
   { href: '/logs',        label: 'Logs' },
   { href: '/users',       label: 'Usuarios' },
   { href: '/system',      label: 'Sistema' },
