@@ -448,6 +448,52 @@ function runMigrations(db) {
         CREATE INDEX IF NOT EXISTS idx_work_item_attempts_item ON work_item_attempts(work_item_id, attempted_at);
       `);
     },
+
+    // v13: credenciales de red (UNC) + auditoría genérica + columnas de asignación en jobs y connections
+    () => {
+      const addColIfNotExists = (table, col, definition) => {
+        const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols.find(c => c.name === col)) {
+          db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${definition}`).run();
+        }
+      };
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS network_credentials (
+          id                TEXT PRIMARY KEY,
+          name              TEXT NOT NULL UNIQUE,
+          domain            TEXT,
+          username          TEXT NOT NULL,
+          password          TEXT NOT NULL,
+          notes             TEXT,
+          last_test_at      TEXT,
+          last_test_ok      INTEGER,
+          last_test_message TEXT,
+          last_test_path    TEXT,
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL,
+          created_by        TEXT,
+          updated_by        TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_events (
+          id            TEXT PRIMARY KEY,
+          at            TEXT NOT NULL,
+          user_id       TEXT,
+          username      TEXT,
+          action        TEXT NOT NULL,
+          resource_type TEXT NOT NULL,
+          resource_id   TEXT,
+          summary       TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_events_resource ON audit_events(resource_type, resource_id, at);
+        CREATE INDEX IF NOT EXISTS idx_audit_events_at ON audit_events(at);
+      `);
+
+      // ADD COLUMN con REFERENCES admite el valor por defecto NULL
+      addColIfNotExists('jobs', 'output_credential_id', 'TEXT REFERENCES network_credentials(id) ON DELETE RESTRICT');
+      addColIfNotExists('connections', 'network_credential_id', 'TEXT REFERENCES network_credentials(id) ON DELETE RESTRICT');
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {
