@@ -84,4 +84,4 @@ const credentialAccess = createCredentialAccess({
   logger,
 });
 
-module.exports = { createCredentialAccess, credentialAccess };
+module.exports = { createCredentialAccess, credentialAccess, networkSession: lazySession };
