@@ -13,6 +13,7 @@ const { buildRequestAuth } = require('../../core/resources/api-config-resolver')
 const { requestWithRetry } = require('../../services/http.service');
 const { exportItemsToFiles } = require('../../services/file-export.service');
 const { SYNC_MODES, OP_MODES, BATCH_DEFAULTS, DESTINATION_MODES } = require('../../config/constants');
+const { credentialAccess } = require('../credentials/credential-access.service');
 const logger = require('../../services/logger.service');
 const eventsService = require('../../services/events.service');
 
@@ -162,12 +163,18 @@ async function executeJob(jobId) {
       // Exportación a archivo — independiente del endpoint, nunca aborta el job
       if (wantsFile) {
         try {
-          const fileResult = await exportItemsToFiles({ items: itemsToProcess, fieldMaps, job });
+          // Con credencial de red, conecta antes de escribir y reconecta una vez si la sesión cayó; sin ella, cuenta del servicio
+          const fileResult = await credentialAccess.withFolderAccess(
+            { path: job.output_dir, credentialId: job.output_credential_id },
+            () => exportItemsToFiles({ items: itemsToProcess, fieldMaps, job }),
+          );
           fileExportStatus = fileResult.status;
           fileExportPaths = JSON.stringify(fileResult.filePaths || []);
         } catch (fileErr) {
           fileExportStatus = 'error';
           fileExportPaths = JSON.stringify([]);
+          // El mensaje (ya clasificado si es de red) llega al registro de ejecución; si luego falla el endpoint, prevalece el suyo
+          errorMessage = fileErr.message;
           logger.error(`Job "${job.name}" - falló exportación a archivo`, { job_id: jobId, error: fileErr.message });
         }
       }

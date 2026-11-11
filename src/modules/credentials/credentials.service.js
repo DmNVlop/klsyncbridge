@@ -3,9 +3,11 @@
 const crypto = require('crypto');
 const { getDb } = require('../../config/database');
 const { encrypt, decrypt } = require('../../services/encryption.service');
-const { AppError, NotFoundError, ConflictError } = require('../../utils/errors');
+const { AppError, NotFoundError, ConflictError, ValidationError } = require('../../utils/errors');
+const { isUncPath } = require('../../core/files/paths');
 
 const RESOURCE_TYPE = 'network_credential';
+const UNC_ONLY_MESSAGE = 'las credenciales de red solo aplican a rutas \\\\servidor\\recurso';
 const UNREADABLE_MESSAGE = 'credencial ilegible: vuelve a escribir la contraseña';
 
 // Proyección pública: nunca incluye `password`
@@ -153,7 +155,18 @@ function recordTestResult(id, { ok, message, path }, actor) {
   });
 }
 
+/**
+ * Comprueba que una credencial puede asignarse a una ruta (jobs y conexiones): debe existir (404) y la ruta ha de ser UNC (400).
+ * Sin credencial no hace nada (cuenta del servicio).
+ */
+function assertAssignable(credentialId, folderPath) {
+  if (!credentialId) return;
+  getCredential(credentialId);
+  if (!folderPath || !isUncPath(folderPath)) throw new ValidationError(UNC_ONLY_MESSAGE);
+}
+
 module.exports = {
+  assertAssignable,
   listCredentials, getCredential, getCredentialSecret, createCredential, updateCredential, deleteCredential,
   findUsages, recordTestResult, writeAudit, purgeAuditEvents, UNREADABLE_MESSAGE,
 };

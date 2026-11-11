@@ -9,6 +9,8 @@ const { isUncPath } = require('../core/files/paths');
 
 const uuidSchema = z.string().uuid();
 
+const UNC_ONLY_MESSAGE = 'las credenciales de red solo aplican a rutas \\\\servidor\\recurso';
+
 const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   per_page: z.coerce.number().int().min(1).max(100).default(25),
@@ -146,6 +148,7 @@ const jobBaseSchema = z.object({
   csv_delimiter: z.string().min(1).max(5).default(';'),
   file_retention: z.enum(Object.values(FILE_RETENTION)).default('keep_all'),
   example_schema_api_id: uuidSchema.optional().nullable(),
+  output_credential_id: uuidSchema.optional().nullable(),
 });
 
 function passthroughRefine(data) {
@@ -155,6 +158,10 @@ function passthroughRefine(data) {
 const passthroughMsg = { message: 'op_passthrough_field es requerido cuando op_mode es "passthrough"', path: ['op_passthrough_field'] };
 
 function destinationSuperRefine(data, ctx) {
+  // Credencial de red: solo con carpeta de salida UNC (si el output_dir no viene, lo comprueba el servicio con el estado guardado)
+  if (data.output_credential_id && data.output_dir && !isUncPath(data.output_dir)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: UNC_ONLY_MESSAGE, path: ['output_credential_id'] });
+  }
   // En updates parciales que no tocan el destino, destination_mode llega undefined — no validar nada acá
   if (data.destination_mode === undefined) return;
   const mode = data.destination_mode;
@@ -185,7 +192,6 @@ const logsFilterSchema = z.object({
 });
 
 // --- Credenciales de red (UNC) ---
-const UNC_ONLY_MESSAGE = 'las credenciales de red solo aplican a rutas \\\\servidor\\recurso';
 
 // Dominio vacío o solo espacios ⇒ null
 const optionalDomainSchema = z.preprocess(

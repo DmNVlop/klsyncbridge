@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { getDb } = require('../../config/database');
 const { NotFoundError, ConflictError, AppError } = require('../../utils/errors');
 const { JOB_STATUSES } = require('../../config/constants');
+const { assertAssignable } = require('../credentials/credentials.service');
 
 function now() { return new Date().toISOString(); }
 
@@ -20,6 +21,7 @@ function serialize(job) {
     destination_mode: job.destination_mode || 'endpoint',
     file_formats: job.file_formats || null,
     output_dir: job.output_dir || null,
+    output_credential_id: job.output_credential_id || null,
     csv_delimiter: job.csv_delimiter || ';',
     file_retention: job.file_retention || 'keep_all',
   };
@@ -38,6 +40,7 @@ function getJob(id) {
 }
 
 function createJob(data) {
+  assertAssignable(data.output_credential_id, data.output_dir);
   const db = getDb();
   const id = crypto.randomUUID();
   const n = now();
@@ -46,8 +49,9 @@ function createJob(data) {
       api_config_id, schedule_type, schedule_value, is_active,
       item_type, op_mode, op_passthrough_field, send_empty_sync, batch_size, batch_concurrency,
       created_at, updated_at, row_filter_enabled, row_filter_expression,
-      destination_mode, file_formats, output_dir, csv_delimiter, file_retention, example_schema_api_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      destination_mode, file_formats, output_dir, csv_delimiter, file_retention, example_schema_api_id,
+      output_credential_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, data.name, data.description || null,
     data.connection_id, data.table_or_view, data.key_field,
@@ -68,7 +72,8 @@ function createJob(data) {
     data.output_dir || null,
     data.csv_delimiter || ';',
     data.file_retention || 'keep_all',
-    data.example_schema_api_id || null
+    data.example_schema_api_id || null,
+    data.output_credential_id || null
   );
   return getJob(id);
 }
@@ -85,11 +90,17 @@ function updateJob(id, data) {
     'sync_mode', 'date_field', 'api_config_id', 'schedule_type', 'schedule_value',
     'item_type', 'op_mode', 'op_passthrough_field',
     'destination_mode', 'file_formats', 'output_dir', 'csv_delimiter', 'file_retention',
-    'example_schema_api_id'];
+    'example_schema_api_id', 'output_credential_id'];
   const fields = {};
   for (const key of allowed) {
     if (data[key] !== undefined) fields[key] = data[key];
   }
+  if (fields.output_credential_id === '') fields.output_credential_id = null;
+  // Estado efectivo (lo enviado + lo guardado): una credencial solo con carpeta de salida UNC
+  assertAssignable(
+    fields.output_credential_id !== undefined ? fields.output_credential_id : existing.output_credential_id,
+    fields.output_dir !== undefined ? fields.output_dir : existing.output_dir,
+  );
   if (data.is_active !== undefined) fields.is_active = data.is_active ? 1 : 0;
   if (data.send_empty_sync !== undefined) fields.send_empty_sync = data.send_empty_sync ? 1 : 0;
   if (data.batch_size !== undefined) fields.batch_size = parseInt(data.batch_size, 10) || 500;
