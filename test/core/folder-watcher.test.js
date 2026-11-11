@@ -76,3 +76,67 @@ test('fs.watch detecta un archivo nuevo sin esperar al barrido', { timeout: 5000
   watcher.stop();
   assert.equal(c.ready[0].name, 'nuevo.xml');
 });
+
+// ── Hook ensureAccess (credenciales de red) ──────────────────────────────────
+
+function denyingCollector() {
+  const c = collector();
+  c.denied = [];
+  c.handlers.onAccessDenied = (message) => c.denied.push(message);
+  return c;
+}
+
+test('ensureAccess: se invoca antes de cada barrido', async () => {
+  const dir = makeTempDir();
+  const calls = [];
+  const c = denyingCollector();
+  const watcher = watchFolder({ ...OPTIONS, path: dir }, c.handlers, { logger: silentLogger, ensureAccess: (o) => { calls.push(o); } });
+  await watcher.sweepNow();
+  await watcher.sweepNow();
+  watcher.stop();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(c.health.map((h) => h.state), ['ok']);
+});
+
+test('ensureAccess: carpeta inexistente ⇒ una reconexión y un único reintento', async () => {
+  const dir = path.join(makeTempDir(), 'no-existe');
+  const calls = [];
+  const c = denyingCollector();
+  const watcher = watchFolder({ ...OPTIONS, path: dir }, c.handlers, { logger: silentLogger, ensureAccess: (o) => { calls.push(o); } });
+  await watcher.sweepNow();
+  watcher.stop();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0] && calls[0].reconnect, undefined);
+  assert.equal(calls[1].reconnect, true);
+  assert.equal(c.health.at(-1).state, 'folder_unreachable');
+});
+
+test('ensureAccess: error credential ⇒ onAccessDenied una vez y sin más barridos', async () => {
+  const dir = makeTempDir();
+  let calls = 0;
+  const hook = () => { calls += 1; const e = new Error('Credencial incorrecta'); e.kind = 'credential'; throw e; };
+  const c = denyingCollector();
+  const watcher = watchFolder({ ...OPTIONS, path: dir }, c.handlers, { logger: silentLogger, ensureAccess: hook });
+  await watcher.sweepNow();
+  await watcher.sweepNow();
+  watcher.stop();
+  assert.deepEqual(c.denied, ['Credencial incorrecta']);
+  assert.equal(calls, 1);
+  assert.equal(c.health.length, 0);
+});
+
+test('ensureAccess: error network ⇒ unreachable y el siguiente barrido vuelve a llamarlo', async () => {
+  const dir = makeTempDir();
+  let calls = 0;
+  const hook = () => { calls += 1; if (calls === 1) { const e = new Error('Sin red'); e.kind = 'network'; throw e; } };
+  const c = denyingCollector();
+  const watcher = watchFolder({ ...OPTIONS, path: dir }, c.handlers, { logger: silentLogger, ensureAccess: hook });
+  await watcher.sweepNow();
+  assert.equal(c.health.at(-1).state, 'folder_unreachable');
+  assert.equal(c.health.at(-1).message, 'Sin red');
+  await watcher.sweepNow();
+  watcher.stop();
+  assert.equal(calls, 2);
+  assert.equal(c.health.at(-1).state, 'ok');
+  assert.equal(c.denied.length, 0);
+});

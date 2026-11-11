@@ -9,6 +9,10 @@ const { sha256 } = require('./fingerprint');
 
 const HEALTH_OK = 'ok';
 const HEALTH_UNREACHABLE = 'folder_unreachable';
+// Errores del sistema de archivos que una reconexión de red puede arreglar
+const RECONNECT_CODES = new Set(['ENOENT', 'EACCES', 'EPERM', 'UNKNOWN']);
+// `kind` de NetworkAccessError que necesitan a una persona (reintentar no sirve)
+const NEEDS_PERSON_KINDS = new Set(['credential', 'conflict']);
 
 /**
  * Vigila una carpeta (sin subcarpetas): fs.watch marca candidatos (con rebote) y un barrido
@@ -17,10 +21,16 @@ const HEALTH_UNREACHABLE = 'folder_unreachable';
  * handlers.shouldProcess({ path, name, size, mtimeMs }) ⇒ boolean  (evita releer lo ya conocido)
  * handlers.onFileReady({ path, name, size, mtimeMs, buffer, fingerprint })
  * handlers.onHealthChange(state, message)  (solo al cambiar de estado)
+ * handlers.onAccessDenied(message)  (opcional; con `ensureAccess`: la credencial o un conflicto necesitan a una persona;
+ *   el watcher deja de barrer y el llamador decide qué hacer, p. ej. reanudar al guardar la credencial)
+ *
+ * deps.ensureAccess({ reconnect }) (opcional): hook que asegura el acceso a la carpeta (credencial de red).
+ *   Se invoca antes de cada barrido y, ante un fallo de lectura, con `reconnect: true` y un único reintento.
+ *   Sin hook el comportamiento es el de siempre.
  *
  * @returns {{ stop(): void, sweepNow(): Promise<void> }}
  */
-function watchFolder(options, handlers, { logger }) {
+function watchFolder(options, handlers, { logger, ensureAccess } = {}) {
   const { path: folderPath, pattern, stableMs, sweepMs, debounceMs = 1000 } = options;
   const inFlight = new Set();
   const debounceTimers = new Map();
@@ -28,6 +38,7 @@ function watchFolder(options, handlers, { logger }) {
   let health = null;
   let sweeping = null;
   let stopped = false;
+  let sweepTimer = null;
 
   function setHealth(state, message) {
     if (state === health) return;
@@ -105,19 +116,56 @@ function watchFolder(options, handlers, { logger }) {
     }
   }
 
+  // Fallo del hook de acceso. true ⇒ el watcher queda detenido a la espera de una persona.
+  function handleAccessError(err) {
+    closeWatcher();
+    if (NEEDS_PERSON_KINDS.has(err.kind)) {
+      stopped = true;
+      clearInterval(sweepTimer);
+      for (const timer of debounceTimers.values()) clearTimeout(timer);
+      debounceTimers.clear();
+      logger.warn('Acceso a la carpeta vigilada denegado; barridos detenidos', { path: folderPath, kind: err.kind });
+      if (handlers.onAccessDenied) handlers.onAccessDenied(err.message);
+      return;
+    }
+    setHealth(HEALTH_UNREACHABLE, err.message);
+  }
+
+  async function readFolder() {
+    try {
+      return await fsp.readdir(folderPath, { withFileTypes: true });
+    } catch (err) {
+      if (!ensureAccess || !RECONNECT_CODES.has(err.code)) throw err;
+      await ensureAccess({ reconnect: true });
+      return fsp.readdir(folderPath, { withFileTypes: true });
+    }
+  }
+
   function sweep() {
     if (stopped) return Promise.resolve();
     if (sweeping) return sweeping;
     sweeping = (async () => {
+      if (ensureAccess) {
+        try {
+          await ensureAccess();
+        } catch (err) {
+          handleAccessError(err);
+          return;
+        }
+      }
       // El watcher se crea ANTES de leer la carpeta: un archivo que llegue durante readdir dispara su evento y no se pierde.
       // Con la carpeta caída no se intenta (evita un aviso por barrido); al volver se crea tras el readdir.
       if (health !== HEALTH_UNREACHABLE) ensureWatcher();
       let entries;
       try {
-        entries = await fsp.readdir(folderPath, { withFileTypes: true });
+        entries = await readFolder();
       } catch (err) {
+        if (err.kind) {
+          handleAccessError(err);
+          return;
+        }
         closeWatcher();
-        setHealth(HEALTH_UNREACHABLE, describeFsError(err, folderPath));
+        setHealth(HEALTH_UNREACHABLE, describeFsError(err, folderPath, { hasCredential: Boolean(ensureAccess) }));
         return;
       }
       setHealth(HEALTH_OK, null);
@@ -128,7 +176,7 @@ function watchFolder(options, handlers, { logger }) {
     return sweeping;
   }
 
-  const sweepTimer = setInterval(sweep, sweepMs);
+  sweepTimer = setInterval(sweep, sweepMs);
   sweepTimer.unref();
   sweep();
 
