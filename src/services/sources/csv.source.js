@@ -4,19 +4,11 @@ const fs = require('fs');
 const path = require('path');
 const { parse } = require('csv-parse/sync');
 const { AppError } = require('../../utils/errors');
-
-function resolveSafePath(filePath) {
-  const resolved = path.resolve(filePath);
-  // Block UNC paths on Windows
-  if (resolved.startsWith('\\\\') || resolved.startsWith('//')) {
-    throw new AppError('Rutas UNC no permitidas', 'INVALID_PATH', 400);
-  }
-  return resolved;
-}
+const { resolveConfiguredPath } = require('../../core/files/paths');
 
 async function test(config) {
   try {
-    const safePath = resolveSafePath(config.file_path);
+    const safePath = resolveConfiguredPath(config.file_path);
     if (!fs.existsSync(safePath)) {
       return { ok: false, message: `Archivo no encontrado: ${safePath}` };
     }
@@ -35,13 +27,13 @@ async function test(config) {
 }
 
 async function getTables(config) {
-  const safePath = resolveSafePath(config.file_path);
+  const safePath = resolveConfiguredPath(config.file_path);
   const filename = path.basename(safePath);
   return [{ name: filename, type: 'CSV' }];
 }
 
 async function getFields(config, _tableName) {
-  const safePath = resolveSafePath(config.file_path);
+  const safePath = resolveConfiguredPath(config.file_path);
   const content = fs.readFileSync(safePath, { encoding: config.encoding || 'utf8' });
 
   if (config.has_header === false) {
@@ -62,7 +54,7 @@ async function getFields(config, _tableName) {
 }
 
 async function getRecords(config, _jobContext) {
-  const safePath = resolveSafePath(config.file_path);
+  const safePath = resolveConfiguredPath(config.file_path);
   const content = fs.readFileSync(safePath, { encoding: config.encoding || 'utf8' });
 
   return parse(content, {
@@ -74,4 +66,4 @@ async function getRecords(config, _jobContext) {
   });
 }
 
-module.exports = { test, getTables, getFields, getRecords, resolveSafePath };
+module.exports = { test, getTables, getFields, getRecords };

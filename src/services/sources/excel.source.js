@@ -1,20 +1,12 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
 const XLSX = require('xlsx');
 const { AppError } = require('../../utils/errors');
-
-function resolveSafePath(filePath) {
-  const resolved = path.resolve(filePath);
-  if (resolved.startsWith('\\\\') || resolved.startsWith('//')) {
-    throw new AppError('Rutas UNC no permitidas', 'INVALID_PATH', 400);
-  }
-  return resolved;
-}
+const { resolveConfiguredPath } = require('../../core/files/paths');
 
 function getSheet(config) {
-  const safePath = resolveSafePath(config.file_path);
+  const safePath = resolveConfiguredPath(config.file_path);
   if (!fs.existsSync(safePath)) {
     throw new AppError(`Archivo no encontrado: ${safePath}`, 'FILE_NOT_FOUND', 404);
   }
@@ -37,7 +29,7 @@ async function test(config) {
 }
 
 async function getTables(config) {
-  const safePath = resolveSafePath(config.file_path);
+  const safePath = resolveConfiguredPath(config.file_path);
   if (!fs.existsSync(safePath)) {
     throw new AppError(`Archivo no encontrado: ${safePath}`, 'FILE_NOT_FOUND', 404);
   }

@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { resolveSafePath } = require('./sources/csv.source');
+const { resolveConfiguredPath } = require('../core/files/paths');
 const { AppError } = require('../utils/errors');
 const { FILE_FORMATS } = require('../config/constants');
 const logger = require('./logger.service');
@@ -135,7 +135,7 @@ async function exportItemsToFiles({ items, fieldMaps, job }) {
     throw new AppError('output_dir no configurado para exportación a archivo', 'INVALID_PATH', 400);
   }
 
-  const outputDir = resolveSafePath(job.output_dir);
+  const outputDir = resolveConfiguredPath(job.output_dir);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
