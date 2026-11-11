@@ -19,6 +19,8 @@ const automationBodySchema = z.object({
 const testFolderSchema = z.object({
   path: z.string().trim().min(1, 'Indica la carpeta'),
   pattern: z.string().trim().min(1).default('*.xml'),
+  credentialId: z.string().uuid().optional(),
+  checkWrite: z.boolean().default(false),
 });
 
 const workItemsFilterSchema = z.object({

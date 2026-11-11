@@ -10,6 +10,9 @@ const { createServer } = require('../../src/server');
 const { generateToken } = require('../../src/modules/auth/auth.service');
 const queue = require('../../src/core/queue/work-queue');
 const { seedApiConfig } = require('../helpers/seed');
+const credentialsService = require('../../src/modules/credentials/credentials.service');
+
+const UNC_PATH = '\\\\servidor\\recurso\\xml';
 
 getDb().prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('jwt_secret', 'test-secret')").run();
 const token = generateToken({ id: 'u1', username: 'tester', role: 'admin' });
@@ -56,6 +59,24 @@ test('probar carpeta', async () => {
   const { body } = await call('POST', '/automations/test-folder', { path: dir });
   assert.equal(body.data.accessible, true);
   assert.equal(body.data.matchingFiles, 1);
+  assert.ok(Array.isArray(body.data.steps), 'incluye el detalle por pasos');
+  assert.equal(body.data.steps[0].name, 'list');
+});
+
+test('probar carpeta con credencial: inexistente ⇒ 404; ruta local ⇒ 400', async () => {
+  const missing = await call('POST', '/automations/test-folder', {
+    path: UNC_PATH, credentialId: '9b2f3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+  });
+  assert.equal(missing.status, 404);
+
+  const credential = credentialsService.createCredential(
+    { name: 'NAS pruebas', domain: 'EMP', username: 'svc', password: 'clave-de-prueba' },
+    { id: 'u1', username: 'tester' },
+  );
+  const local = await call('POST', '/automations/test-folder', { path: makeTempDir(), credentialId: credential.id });
+  assert.equal(local.status, 400);
+  assert.match(local.body.error, /solo aplican a rutas/);
+  assert.equal(JSON.stringify(local.body).includes('clave-de-prueba'), false);
 });
 
 test('crear con error ⇒ 400 con sección; crear válida, listar archivos, borrar', async () => {

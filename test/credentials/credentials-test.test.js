@@ -17,8 +17,8 @@ const quietLogger = { info() {}, warn() {}, error() {} };
 /** probeFolder simulado: ejecuta el hook y devuelve pasos según `listOk`/`writeOk`. */
 function fakeProbe({ listOk = true, writeOk = true } = {}) {
   const calls = [];
-  const probe = async ({ checkWrite }, { ensureAccess }) => {
-    calls.push({ checkWrite });
+  const probe = async ({ checkWrite, pattern }, { ensureAccess }) => {
+    calls.push({ checkWrite, pattern });
     try {
       await ensureAccess();
     } catch (err) {
@@ -26,7 +26,7 @@ function fakeProbe({ listOk = true, writeOk = true } = {}) {
     }
     const steps = [{ name: 'connect', ok: true, message: 'ok' }, { name: 'list', ok: listOk, message: listOk ? 'listado' : 'no lista' }];
     if (checkWrite) steps.push({ name: 'write', ok: writeOk, message: writeOk ? 'escribe' : 'no escribe' });
-    return { accessible: listOk, steps };
+    return { accessible: listOk, matchingFiles: 3, steps };
   };
   return { probe, calls };
 }
@@ -113,4 +113,15 @@ test('checkWrite false ⇒ sin paso write; fallo de escritura ⇒ ok false', asy
 test('ruta local ⇒ ValidationError', async () => {
   const { deps } = build();
   await assert.rejects(testFolderAccess({ path: 'C:\\datos', credentialId: 'cred-1' }, actor, deps), ValidationError);
+});
+
+test('reenvía el patrón (por defecto «*») y conserva los campos del probe', async () => {
+  const withPattern = build();
+  const res = await testFolderAccess({ path: PATH, credentialId: 'cred-1', pattern: '*.xml' }, actor, withPattern.deps);
+  assert.equal(withPattern.calls[0].pattern, '*.xml');
+  assert.equal(res.accessible, true);
+  assert.equal(res.matchingFiles, 3);
+  const withoutPattern = build();
+  await testFolderAccess({ path: PATH, credentialId: 'cred-1' }, actor, withoutPattern.deps);
+  assert.equal(withoutPattern.calls[0].pattern, '*');
 });

@@ -32,11 +32,12 @@ function summarize(probe, checkWrite) {
  *   al terminar. Si el servidor ya está conectado con otra credencial, el paso `connect` sale en rojo con el
  *   mensaje de conflicto: nunca se desconecta la conexión ajena para probar.
  * El resultado no contiene secretos.
+ * `pattern` (por defecto `*`) filtra los archivos que cuenta el paso de listado.
  * @returns {Promise<{ ok: boolean, steps: Array<{ name: string, ok: boolean, message: string }>, message: string }>}
  */
 async function testFolderAccess(input, actor, overrides = {}) {
   const deps = { ...defaultDeps(), ...overrides };
-  const { path, credentialId, checkWrite = false } = input;
+  const { path, credentialId, checkWrite = false, pattern = '*' } = input;
   if (!parseUncRoot(path)) throw new ValidationError(UNC_ONLY_MESSAGE);
 
   const useEphemeral = Boolean(input.password);
@@ -65,7 +66,7 @@ async function testFolderAccess(input, actor, overrides = {}) {
   let probe;
   try {
     probe = await deps.probeFolder(
-      { path, pattern: '*', checkWrite },
+      { path, pattern, checkWrite },
       { ensureAccess: access.makeEnsureAccess({ path, credentialId: accessId }) },
     );
   } finally {
@@ -84,7 +85,8 @@ async function testFolderAccess(input, actor, overrides = {}) {
   if (credentialId && !useEphemeral) {
     deps.recordTestResult(credentialId, { ok, message, path }, actor);
   }
-  return { ok, steps: probe.steps, message };
+  // Se conservan los campos del probe (accessible, matchingFiles…) para quien ya los consumía
+  return { ...probe, ok, steps: probe.steps, message };
 }
 
 module.exports = { testFolderAccess };

@@ -8,6 +8,8 @@ const { probeFolder } = require('../../core/files/folder-probe');
 const queue = require('../../core/queue/work-queue');
 const { automationBodySchema, testFolderSchema, workItemsFilterSchema } = require('./automations.validators');
 const svc = require('./automations.service');
+const credentialsService = require('../credentials/credentials.service');
+const { testFolderAccess } = require('../credentials/credentials-test.service');
 const engine = require('./automations.engine');
 
 const router = express.Router();
@@ -22,7 +24,11 @@ router.get('/', (req, res) => {
 router.post('/test-folder', async (req, res) => {
   try {
     const data = validate(testFolderSchema, req.body);
-    return success(res, await probeFolder(data));
+    if (!data.credentialId) return success(res, await probeFolder(data));
+    // Con credencial: prueba por pasos con la credencial asignada (inexistente ⇒ 404; ruta local ⇒ 400)
+    credentialsService.getCredential(data.credentialId);
+    const actor = { id: req.user.sub, username: req.user.username };
+    return success(res, await testFolderAccess(data, actor));
   } catch (err) { return fromError(res, err); }
 });
 
