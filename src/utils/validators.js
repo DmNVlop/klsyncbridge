@@ -5,6 +5,7 @@ const {
   AUTH_TYPES, SYNC_MODES, SCHEDULE_TYPES, HTTP_METHODS, TRANSFORMS, OP_MODES, ITEM_TYPES,
   DESTINATION_MODES, FILE_RETENTION,
 } = require('../config/constants');
+const { isUncPath } = require('../core/files/paths');
 
 const uuidSchema = z.string().uuid();
 
@@ -183,6 +184,47 @@ const logsFilterSchema = z.object({
   per_page: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+// --- Credenciales de red (UNC) ---
+const UNC_ONLY_MESSAGE = 'las credenciales de red solo aplican a rutas \\\\servidor\\recurso';
+
+// Dominio vacío o solo espacios ⇒ null
+const optionalDomainSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+  z.string().trim().max(100).nullable().optional(),
+);
+
+const createNetworkCredentialSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  domain: optionalDomainSchema,
+  username: z.string().trim().min(1).max(100),
+  password: z.string().min(1).max(256),
+  notes: z.string().max(500).optional().nullable(),
+});
+
+// En la edición, una contraseña vacía o ausente conserva la guardada
+const updateNetworkCredentialSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  domain: optionalDomainSchema,
+  username: z.string().trim().min(1).max(100).optional(),
+  password: z.preprocess(
+    (value) => (value === '' || value === null ? undefined : value),
+    z.string().min(1).max(256).optional(),
+  ),
+  notes: z.string().max(500).optional().nullable(),
+});
+
+const testNetworkCredentialSchema = z.object({
+  path: z.string().min(1).max(500).refine((value) => isUncPath(value), { message: UNC_ONLY_MESSAGE }),
+  credentialId: uuidSchema.optional(),
+  domain: optionalDomainSchema,
+  username: z.string().trim().min(1).max(100).optional(),
+  password: z.string().max(256).optional(),
+  checkWrite: z.boolean().optional(),
+}).refine((value) => Boolean(value.credentialId || value.username), {
+  message: 'indica una credencial guardada o un usuario',
+  path: ['credentialId'],
+});
+
 function validate(schema, data) {
   const result = schema.safeParse(data);
   if (!result.success) {
@@ -208,6 +250,9 @@ module.exports = {
   excelConfigSchema,
   createApiConfigSchema,
   updateApiConfigSchema,
+  createNetworkCredentialSchema,
+  updateNetworkCredentialSchema,
+  testNetworkCredentialSchema,
   fieldMapEntrySchema,
   createJobSchema,
   updateJobSchema,
