@@ -82,7 +82,8 @@ function createConnection(data) {
   const sourceType = data.source_type || 'sqlserver';
 
   let configObj = {};
-  let host = null, port = null, databaseName = null, username = null;
+  // `port` es NOT NULL en la tabla: los orígenes de archivo (CSV/Excel) usan el valor por defecto de la columna
+  let host = null, port = 1433, databaseName = null, username = null;
   let encryptFlag = 0, trustCertFlag = 0;
   let legacyPassword = null;
 
