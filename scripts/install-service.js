@@ -81,4 +81,15 @@ svc.on('error', (err) => {
   process.exit(1);
 });
 
+// node-windows solo avisa de estos casos en el Visor de eventos y no instala nada: sin esto el script
+// acabaría con código 0 y el servicio sin crear.
+svc.on('alreadyinstalled', () => {
+  console.error(`❌ El servicio ${svc._exe} ya tiene ficheros en ${svc.root}: desinstálalo antes de volver a instalarlo`);
+  process.exit(1);
+});
+svc.on('invalidinstallation', () => {
+  console.error(`❌ Instalación del servicio incompleta en ${svc.root} (faltan ${svc._exe} o su .xml)`);
+  process.exit(1);
+});
+
 svc.install();

@@ -56,3 +56,30 @@ test('cleanUpdatesDir borra los Setup anteriores y no falla si la carpeta no exi
   cleanUpdatesDir(dir);
   assert.deepEqual(fs.readdirSync(dir), []);
 });
+
+const { removeStaleDaemon } = require('../../scripts/installer-setup');
+
+test('removeStaleDaemon borra src/daemon de una instalación anterior si el servicio ya no está en Windows', () => {
+  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'klsb-app-'));
+  const daemonDir = path.join(appRoot, 'src', 'daemon');
+  fs.mkdirSync(daemonDir, { recursive: true });
+  fs.writeFileSync(path.join(daemonDir, 'klsyncbridge.exe'), 'x');
+  fs.writeFileSync(path.join(daemonDir, 'klsyncbridge.xml'), 'x');
+  assert.equal(removeStaleDaemon(appRoot, { isRegistered: () => false }), true);
+  assert.equal(fs.existsSync(daemonDir), false);
+});
+
+test('removeStaleDaemon no hace nada en una instalación limpia', () => {
+  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'klsb-app-'));
+  let asked = false;
+  assert.equal(removeStaleDaemon(appRoot, { isRegistered: () => { asked = true; return false; } }), false);
+  assert.equal(asked, false);
+});
+
+test('removeStaleDaemon no toca nada y falla con mensaje claro si el servicio sigue registrado', () => {
+  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'klsb-app-'));
+  const daemonDir = path.join(appRoot, 'src', 'daemon');
+  fs.mkdirSync(daemonDir, { recursive: true });
+  assert.throws(() => removeStaleDaemon(appRoot, { isRegistered: () => true }), /sigue registrado en Windows/);
+  assert.equal(fs.existsSync(daemonDir), true);
+});

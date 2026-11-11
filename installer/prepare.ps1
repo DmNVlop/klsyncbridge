@@ -22,6 +22,16 @@ if ($svc.Status -ne 'Stopped') {
   $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
 }
 & sc.exe delete $serviceName | Out-Null
+# sc delete solo lo marca: Windows lo quita cuando nadie lo tiene abierto (p. ej. services.msc).
+# Si sigue ahí, la instalación nueva no podría crear el servicio: se para antes de copiar nada.
+$deadline = (Get-Date).AddSeconds(30)
+while ((Get-Service -Name $serviceName -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+  Start-Sleep -Milliseconds 500
+}
+if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+  Write-Log 'El servicio previo sigue marcado para eliminación: cierra services.msc o reinicia el equipo.'
+  exit 2
+}
 Write-Log 'Servicio previo parado y eliminado.'
 
 # GetFullPath no falla si la carpeta antigua ya no existe (Resolve-Path sí)

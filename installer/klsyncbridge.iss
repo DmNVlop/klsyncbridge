@@ -74,7 +74,8 @@ begin
     Log('installer-setup.js falló. Código: ' + IntToStr(ResultCode) + '. Log: ' + LogFile);
     SuppressibleMsgBox('Los ficheros se han copiado, pero no se pudo configurar el servicio KLSyncBridge (código ' +
         IntToStr(ResultCode) + ').' + #13#10#13#10 + 'Revisa el log:' + #13#10 + LogFile + #13#10#13#10 +
-        'Vuelve a ejecutar el instalador o contacta con soporte.', mbError, MB_OK, IDOK);
+        'Vuelve a ejecutar el instalador como administrador. Si sigue fallando, sigue los pasos de' + #13#10 +
+        ExpandConstant('{app}\docs\INSTALL.md') + ' (apartado «Si el instalador falla») o contacta con soporte.', mbError, MB_OK, IDOK);
   end;
 end;
 

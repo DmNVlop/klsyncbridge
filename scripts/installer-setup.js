@@ -70,6 +70,37 @@ async function waitForHealth(port, { timeoutMs = HEALTH_TIMEOUT_MS, pollMs = HEA
   throw new Error(`El servicio no responde en http://127.0.0.1:${port}/api/health tras ${Math.round(timeoutMs / 1000)} s`);
 }
 
+const SERVICE_ID = 'klsyncbridge.exe';
+const SC_SERVICE_NOT_FOUND = 1060;
+
+/** true si Windows tiene registrado el servicio (sc.exe query sale con 1060 cuando no existe). */
+function isServiceRegistered(serviceId = SERVICE_ID) {
+  try {
+    execFileSync('sc.exe', ['query', serviceId], { stdio: 'ignore' });
+    return true;
+  } catch (err) {
+    if (err.status === SC_SERVICE_NOT_FOUND) return false;
+    throw new Error(`No se pudo consultar el servicio ${serviceId} con sc.exe (código ${err.status ?? err.code})`);
+  }
+}
+
+/**
+ * Borra los ficheros del servicio (src\daemon) que deja una instalación anterior. node-windows decide si el
+ * servicio "ya existe" mirando esos ficheros, no Windows: si quedan, no lo vuelve a crear y la instalación
+ * acaba sin servicio. prepare.ps1 ya ha eliminado el servicio previo, así que aquí no debe seguir registrado;
+ * si lo está, no se toca nada y se falla con un mensaje claro.
+ */
+function removeStaleDaemon(appRoot, { isRegistered = isServiceRegistered } = {}) {
+  const daemonDir = path.join(appRoot, 'src', 'daemon');
+  if (!fs.existsSync(daemonDir)) return false;
+  if (isRegistered()) {
+    throw new Error(`El servicio ${SERVICE_ID} sigue registrado en Windows: ciérralo (services.msc), reinicia el equipo y vuelve a ejecutar el instalador`);
+  }
+  fs.rmSync(daemonDir, { recursive: true, force: true });
+  console.log(`🧹 Ficheros de servicio anteriores eliminados: ${daemonDir}`);
+  return true;
+}
+
 function run(script, env) {
   execFileSync(process.execPath, [path.join(__dirname, script)], { stdio: 'inherit', env });
 }
@@ -93,6 +124,7 @@ async function main() {
   cleanUpdatesDir(path.join(dataRoot, 'updates'));
 
   run('setup.js', env);
+  removeStaleDaemon(path.join(__dirname, '..'));
   run('install-service.js', env);
 
   const port = readPort(envFile);
@@ -108,4 +140,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ensureEnvFile, readPort, waitForHealth, cleanUpdatesDir };
+module.exports = { ensureEnvFile, readPort, waitForHealth, cleanUpdatesDir, removeStaleDaemon };

@@ -28,6 +28,26 @@ Dónde queda cada cosa:
 
 El instalador no termina hasta comprobar que el servicio responde (`http://localhost:3847/api/health`); si no responde en 60 segundos, muestra un error con la ruta de `installer-setup.log`.
 
+### Si el instalador falla
+
+Mensaje «Los ficheros se han copiado, pero no se pudo configurar el servicio» o «No se pudo preparar la instalación». Los datos (`C:\ProgramData\KLSyncBridge`) no se pierden en ningún caso.
+
+1. Abrir `C:\ProgramData\KLSyncBridge\logs\installer-setup.log` y leer las últimas líneas (las que empiezan por ❌ explican la causa).
+2. En un **PowerShell como administrador**, ver el estado del servicio:
+   ```powershell
+   sc.exe query klsyncbridge.exe
+   ```
+   - `ERROR 1060` (no existe): el servicio no llegó a crearse. Seguir con el paso 3.
+   - `RUNNING`: el servicio funciona; abrir `http://localhost:3847/api/health`. Si responde, la instalación es correcta (solo tardó más de 60 s en arrancar).
+   - Cualquier otro estado, o «marcado para eliminación»: cerrar `services.msc` (y el Administrador de tareas si está abierto), **reiniciar el equipo** y seguir con el paso 3.
+3. Volver a ejecutar el mismo `KLSyncBridge-Setup-X.Y.Z.exe` como administrador. Repara solo la instalación: limpia los restos del servicio anterior y lo vuelve a crear.
+4. Si vuelve a fallar, configurar el servicio a mano con el Node.js incluido (PowerShell como administrador):
+   ```powershell
+   cd "C:\Program Files\KLSyncBridge"
+   .\node.exe scripts\installer-setup.js "C:\ProgramData\KLSyncBridge"
+   ```
+   Hace lo mismo que el final del instalador y escribe en pantalla cada paso; termina con «✅ Servicio en marcha y respondiendo». Si no, enviar a soporte su salida y `installer-setup.log`.
+
 **Desde una instalación antigua (carpeta con `instalar.bat`, v2.2.0 o anterior):** ejecutar el Setup sin desinstalar nada. Detecta el servicio antiguo, lo para, lo sustituye y copia `data\` y `.env` a `ProgramData` (solo si allí aún no hay datos). Se entra con el usuario y la contraseña de siempre. La carpeta antigua queda intacta como copia de seguridad: se puede borrar cuando se compruebe que todo funciona.
 
 **Desinstalar:** Configuración de Windows › **Aplicaciones** › KLSyncBridge › Desinstalar. Pregunta si borrar también los datos (`ProgramData\KLSyncBridge`); por defecto se conservan, y una instalación posterior los reutiliza.
@@ -287,6 +307,8 @@ Si ambos responden sin error, `npm install` funcionará.
 - Si la conexión falla con certificado, activar la opción "Confiar en certificado del servidor" al crear la conexión.
 
 ### Reinstalar el servicio tras actualización
+
+Solo para instalaciones antiguas con script o manuales. Con el instalador, ver [Si el instalador falla](#si-el-instalador-falla).
 
 ```bat
 node scripts/uninstall-service.js
