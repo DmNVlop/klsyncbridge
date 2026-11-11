@@ -7,6 +7,7 @@ const env = require('./config/env');
 const logger = require('./services/logger.service');
 const { initDatabase, closeDatabase } = require('./config/database');
 const { createServer } = require('./server');
+const { getNetworkSession } = require('./core/network/network-session');
 
 process.on('uncaughtException', (err) => {
   logger.error('Uncaught Exception', { error: err.message, stack: err.stack });
@@ -75,6 +76,15 @@ async function main() {
     logger.warn('Error en cleanup de integration_logs', { error: cleanupErr.message });
   }
 
+  // Purga de la auditoría de credenciales de red (365 días)
+  try {
+    const { purgeAuditEvents } = require('./modules/credentials/credentials.service');
+    const purged = purgeAuditEvents(365);
+    if (purged > 0) logger.info('Auditoría de credenciales de red purgada', { deleted: purged });
+  } catch (auditErr) {
+    logger.warn('Error al purgar la auditoría de credenciales de red', { error: auditErr.message });
+  }
+
   // Graceful shutdown — idempotente, una sola ejecución por proceso
   let shuttingDown = false;
   function shutdown(signal) {
@@ -86,11 +96,20 @@ async function main() {
     stopUpdateChecks();
     automationsEngine.stopAll();
 
-    server.close(() => {
-      logger.info('Servidor HTTP cerrado');
-      closeDatabase();
-      logger.info('Apagado completado');
-      process.exit(0);
+    // Cancela las conexiones de red con credencial antes de cerrar; un fallo aquí nunca impide el apagado
+    (async () => {
+      try {
+        await getNetworkSession().disconnectAll();
+      } catch (netErr) {
+        logger.warn('No se pudieron cancelar las conexiones de red al apagar', { error: netErr.message });
+      }
+    })().finally(() => {
+      server.close(() => {
+        logger.info('Servidor HTTP cerrado');
+        closeDatabase();
+        logger.info('Apagado completado');
+        process.exit(0);
+      });
     });
 
     // Forzar cierre tras 10 segundos
