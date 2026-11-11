@@ -110,6 +110,7 @@ function createWorker({ automationId, steps, resolveResources, policy, halted = 
 
   return {
     wake,
+    halt,
     isHalted: () => isHalted,
     stop() {
       stopped = true;

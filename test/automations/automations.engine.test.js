@@ -63,3 +63,44 @@ test('arranque: lo que quedó en proceso vuelve a pendiente', async () => {
   engine.stopAll();
   assert.equal(itemByName(automation.id, 'z.xml').status, 'pending');
 });
+
+test('ctx.halt de un disparador ⇒ trigger y worker parados, needs_attention con el mensaje; resume lo rearranca', async (t) => {
+  const { z } = require('zod/v4');
+  const { triggers } = require('../../src/modules/automations/plugins/registry');
+  let starts = 0;
+  let stops = 0;
+  let haltOnStart = true;
+  triggers.register({
+    type: 'test_halting',
+    version: 1,
+    title: 'Disparador de prueba',
+    description: 'Solo para tests',
+    configSchema: z.object({}),
+    createInstance: () => ({
+      start(ctx) { starts += 1; if (haltOnStart) ctx.halt('x'); },
+      stop() { stops += 1; },
+      sweepNow: () => Promise.resolve(),
+    }),
+  });
+  t.after(() => engine.stopAll());
+  const api = seedApiConfig('http://127.0.0.1:1');
+  const automation = svc.createAutomation({
+    name: 'Halt',
+    is_active: true,
+    trigger: { type: 'test_halting', config: {} },
+    steps: [{ type: 'ardis_xml_import', config: { api_config_id: api.id } }],
+  });
+  engine.reloadAutomation(automation.id);
+  const row = svc.getAutomation(automation.id);
+  assert.equal(row.health_state, 'needs_attention');
+  assert.equal(row.health_message, 'x');
+  assert.equal(engine.getRuntime(automation.id).worker.isHalted(), true);
+  assert.ok(stops >= 1, 'el disparador se ha parado');
+
+  haltOnStart = false;
+  const startsBefore = starts;
+  engine.resume(automation.id);
+  assert.equal(starts, startsBefore + 1);
+  assert.equal(svc.getAutomation(automation.id).health_state, 'ok');
+  assert.equal(engine.getRuntime(automation.id).worker.isHalted(), false);
+});

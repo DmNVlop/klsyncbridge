@@ -70,6 +70,11 @@ function startAutomation(automation) {
 
   const trigger = triggers.get(automation.trigger.type).createInstance(automation.trigger.config);
   trigger.start({
+    // Un disparador que no puede continuar sin una persona (p. ej. credencial rechazada) detiene la automatización
+    halt: (message) => {
+      trigger.stop();
+      worker.halt(message);
+    },
     logger,
     isKnownUnchanged: (itemKey, stat) => queue.isKnownUnchanged(automation.id, itemKey, stat),
     enqueue: (input) => {

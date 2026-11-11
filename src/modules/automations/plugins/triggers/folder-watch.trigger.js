@@ -2,7 +2,8 @@
 
 const { z } = require('zod/v4');
 const { watchFolder } = require('../../../../core/files/folder-watcher');
-const { normalizeItemKey, isAbsoluteWindowsPath } = require('../../../../core/files/paths');
+const { normalizeItemKey, isAbsoluteWindowsPath, isUncPath } = require('../../../../core/files/paths');
+const { credentialAccess } = require('../../../credentials/credential-access.service');
 
 const configSchema = z.object({
   path: z.string().trim().min(1, 'Indica la carpeta')
@@ -14,11 +15,22 @@ const configSchema = z.object({
     .meta({ title: 'Segundos sin cambios para dar el archivo por completo' }),
   sweepSeconds: z.number().int().min(15).max(3600).default(60)
     .meta({ title: 'Revisión completa de la carpeta cada (segundos)' }),
+  credentialId: z.string().uuid().nullable().optional()
+    .meta({
+      title: 'Acceso a la carpeta',
+      description: 'Cuenta del servicio (por defecto) o credencial de red guardada. Solo para rutas \\\\servidor\\recurso.',
+      resource: 'network_credential',
+    }),
+}).refine((config) => !config.credentialId || isUncPath(config.path), {
+  path: ['credentialId'],
+  message: 'las credenciales de red solo aplican a rutas \\\\servidor\\recurso',
 });
 
 /**
  * Disparador fino: compone watchFolder (core) y traduce sus eventos al contexto del motor.
- * ctx = { logger, enqueue, isKnownUnchanged, setHealth }
+ * ctx = { logger, enqueue, isKnownUnchanged, setHealth, halt }
+ * Con `credentialId` el acceso a la carpeta pasa por la credencial de red; si necesita a una persona (credencial
+ * rechazada o conflicto) se llama a `ctx.halt` y la automatización queda en needs_attention.
  */
 function createInstance(config) {
   let handle = null;
@@ -40,8 +52,14 @@ function createInstance(config) {
             meta: { path: file.path, size: file.size, mtimeMs: file.mtimeMs },
           }),
           onHealthChange: (state, message) => ctx.setHealth(state, message),
+          onAccessDenied: (message) => ctx.halt(message),
         },
-        { logger: ctx.logger },
+        {
+          logger: ctx.logger,
+          ensureAccess: config.credentialId
+            ? credentialAccess.makeEnsureAccess({ path: config.path, credentialId: config.credentialId })
+            : undefined,
+        },
       );
     },
     stop() {
