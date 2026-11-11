@@ -46,6 +46,9 @@ function createNetworkSession({ winNet, logger }) {
 
     const code = await winNet.connect({ root: parsed.root, username, password });
     if (code !== 0) {
+      // Un servidor sin recursos conectados no debe seguir reservado para esta credencial
+      // (p. ej. tras una reconexión fallida), o bloquearía a las demás con un conflicto falso.
+      if (entry && entry.shares.size === 0) registry.delete(server);
       const info = classifyWinError(code);
       logger.warn('No se pudo conectar con el recurso de red', { server, share, credentialId, winCode: code, kind: info.kind });
       throw new NetworkAccessError({ ...info, winCode: code });

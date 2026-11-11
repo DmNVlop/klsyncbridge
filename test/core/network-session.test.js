@@ -85,6 +85,19 @@ test('reconnect: disconnect y connect una sola vez', async () => {
   assert.equal(session.listConnections().length, 1);
 });
 
+test('reconexión fallida: libera el servidor y otra credencial puede conectar', async () => {
+  const codes = {};
+  const winNet = fakeWinNet({ codes });
+  const session = createNetworkSession({ winNet, logger: silentLogger });
+  await session.ensureConnected(cred());
+  codes['\\\\srv\\datos'] = 1326;
+  await assert.rejects(session.ensureConnected(cred(), { reconnect: true }), (err) => err.kind === 'credential');
+  assert.deepEqual(session.listConnections(), []);
+  codes['\\\\srv\\datos'] = 0;
+  await session.ensureConnected(cred({ credentialId: 'c2' }));
+  assert.equal(session.listConnections()[0].credentialId, 'c2');
+});
+
 test('disconnectCredential cancela todos sus recursos y libera el servidor', async () => {
   const winNet = fakeWinNet();
   const session = createNetworkSession({ winNet, logger: silentLogger });
