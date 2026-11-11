@@ -78,7 +78,8 @@ function createServer() {
   app.use('/api/users', require('./modules/users/users.routes'));
   app.use('/api/connections', require('./modules/connections/connections.routes'));
   app.use('/api/api-configs', require('./modules/api-configs/api-configs.routes'));
-  app.use('/api/jobs', require('./modules/jobs/jobs.routes'));
+  app.use('/api/network-credentials', require('./modules/credentials/credentials.routes'));
+  app.use('/api/jobs',require('./modules/jobs/jobs.routes'));
   app.use('/api/automations', require('./modules/automations/automations.routes'));
   app.use('/api/automation-types', require('./modules/automations/automation-types.routes'));
   app.use('/api/work-items', require('./modules/automations/work-items.routes'));
