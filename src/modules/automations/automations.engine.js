@@ -132,6 +132,18 @@ function resumeByApiConfig(apiConfigId) {
   }
 }
 
+/**
+ * Credencial de red guardada o cambiada: reanuda las detenidas por ella y recarga las activas
+ * (reconstruye el hook de acceso tras desconectar la credencial anterior).
+ */
+function resumeByCredential(credentialId) {
+  for (const id of svc.findAutomationIdsByCredential(credentialId)) {
+    const automation = svc.getAutomation(id);
+    if (automation.health_state === H.NEEDS_ATTENTION) resume(id);
+    else if (automation.is_active) reloadAutomation(id);
+  }
+}
+
 /** Reintento manual: despierta al worker si está en marcha. */
 function wakeAutomation(id) {
   const entry = running.get(id);
@@ -148,4 +160,4 @@ function getRuntime(id) {
   return running.get(id) || null;
 }
 
-module.exports = { start, stopAll, reloadAutomation, stopAutomation, resume, resumeByApiConfig, wakeAutomation, getRuntime };
+module.exports = { start, stopAll, reloadAutomation, stopAutomation, resume, resumeByApiConfig, resumeByCredential, wakeAutomation, getRuntime };

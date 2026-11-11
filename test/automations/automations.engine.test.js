@@ -104,3 +104,39 @@ test('ctx.halt de un disparador ⇒ trigger y worker parados, needs_attention co
   assert.equal(svc.getAutomation(automation.id).health_state, 'ok');
   assert.equal(engine.getRuntime(automation.id).worker.isHalted(), false);
 });
+
+test('resumeByCredential: reanuda las detenidas con la credencial y recarga las activas; el resto, intacto', async (t) => {
+  const { credentialAccess } = require('../../src/modules/credentials/credential-access.service');
+  const originalMake = credentialAccess.makeEnsureAccess;
+  const built = [];
+  credentialAccess.makeEnsureAccess = (target) => { built.push(target); return async () => undefined; };
+  t.after(() => { credentialAccess.makeEnsureAccess = originalMake; engine.stopAll(); });
+
+  const credentialId = '7b1e2c3d-4a5b-4c6d-8e7f-1a2b3c4d5e6f';
+  const unc = '\\\\servidor\\recurso\\xml';
+  const api = seedApiConfig('http://127.0.0.1:1');
+  const steps = [{ type: 'ardis_xml_import', config: { api_config_id: api.id } }];
+  const halted = svc.createAutomation({
+    name: 'Detenida', is_active: false, steps, trigger: { type: 'folder_watch', config: { path: unc, credentialId } },
+  });
+  const active = svc.createAutomation({
+    name: 'Activa', is_active: true, steps, trigger: { type: 'folder_watch', config: { path: unc, credentialId, sweepSeconds: 3600 } },
+  });
+  const other = svc.createAutomation({
+    name: 'Sin credencial', is_active: false, steps, trigger: { type: 'folder_watch', config: { path: makeTempDir() } },
+  });
+  svc.setHealth(halted.id, 'needs_attention', 'Credencial incorrecta');
+  svc.setHealth(other.id, 'needs_attention', 'otra causa');
+
+  assert.deepEqual(svc.findAutomationIdsByCredential(credentialId).sort(), [halted.id, active.id].sort());
+  engine.resumeByCredential(credentialId);
+
+  assert.equal(svc.getAutomation(halted.id).health_state, 'ok');
+  assert.equal(svc.getAutomation(other.id).health_state, 'needs_attention');
+  assert.ok(engine.getRuntime(active.id), 'la activa se ha recargado y sigue en marcha');
+  assert.equal(built.filter((b) => b.credentialId === credentialId).length, 1);
+
+  // Sin automatizaciones con esa credencial ⇒ no-op
+  assert.doesNotThrow(() => engine.resumeByCredential('00000000-0000-4000-8000-000000000000'));
+  assert.deepEqual(svc.findAutomationIdsByCredential('00000000-0000-4000-8000-000000000000'), []);
+});

@@ -134,6 +134,13 @@ function findAutomationIdsByApiConfig(apiConfigId) {
     .map((row) => row.automation_id);
 }
 
+/** Automatizaciones cuyo disparador usa una credencial de red (vive en `trigger_config`, no en los pasos; ids uuid, sin comodines). */
+function findAutomationIdsByCredential(credentialId) {
+  return getDb().prepare('SELECT id FROM automations WHERE trigger_config LIKE ?')
+    .all(`%"${credentialId}"%`)
+    .map((row) => row.id);
+}
+
 module.exports = {
   listAutomations,
   listActiveAutomations,
@@ -144,4 +151,5 @@ module.exports = {
   setHealth,
   markSuccess,
   findAutomationIdsByApiConfig,
+  findAutomationIdsByCredential,
 };
