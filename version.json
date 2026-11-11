@@ -1,5 +1,5 @@
 {
   "version": "2.3.0",
-  "release_date": "2026-11-02",
-  "changelog": "- Instalador autocontenido (sin Node, Python ni Build Tools)\n- Primer acceso: la contraseña del admin se elige en la UI\n- Actualización con el instalador, verificada por sha256"
+  "release_date": "2026-11-11",
+  "changelog": "- Instalador autocontenido (sin Node, Python ni Build Tools)\n- Primer acceso: la contraseña del admin se elige en la UI\n- Actualización con el instalador, verificada por sha256\n- Aviso de nueva versión en todas las pantallas (se comprueba al arrancar y cada 6 h)\n- Tras «Actualizar ahora», la pantalla espera a que el servicio vuelva con la versión nueva\n- «Pasar al instalador»: las instalaciones antiguas migran con un clic y, si algo falla, vuelven solas a la versión anterior\n- Corregido: actualizar con el instalador encima de otra instalación no volvía a crear el servicio\n- Corregido: bucle de renovación de token ante respuestas 401"
 }
