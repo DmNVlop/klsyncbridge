@@ -47,6 +47,21 @@
       </div>
     </div>
 
+    <!-- Cuenta del servicio y conexiones de red -->
+    <div class="bg-surface rounded-xl border border-white/5 p-6">
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="font-medium text-white">Cuenta del servicio</h2>
+        <button onclick="loadNetwork()" id="btn-network-refresh" title="Vuelve a consultar la cuenta del servicio y las conexiones de red abiertas" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white text-xs transition-colors">
+          ↺ Actualizar
+        </button>
+      </div>
+      <p id="network-account" class="text-sm text-slate-300 font-mono mb-2">Consultando...</p>
+      <p class="text-xs text-slate-500 mb-4">Si la cuenta del servicio no tiene acceso a un recurso de red, usa una <a href="/network-credentials" class="text-accent hover:underline">credencial de red</a> o cambia la cuenta de inicio de sesión del servicio KLSyncBridge en <span class="font-mono">services.msc</span>.</p>
+      <div id="network-unavailable" class="hidden mb-4 p-3 rounded-lg border border-amber-500/30 bg-amber-900/20 text-amber-300 text-sm">Las credenciales de red no están disponibles en este sistema: las rutas de red solo funcionarán con la cuenta del servicio.</div>
+      <h3 class="text-xs font-medium text-slate-400 mb-2">Conexiones de red abiertas</h3>
+      <div id="network-connections" class="text-sm text-slate-400">Consultando...</div>
+    </div>
+
     <!-- Control operativo: Iniciar / Detener -->
     <div class="bg-surface rounded-xl border border-white/5 p-6">
       <h2 class="font-medium text-white mb-1">Control del servicio</h2>
@@ -236,12 +251,44 @@
       document.getElementById('main-content').classList.remove('hidden');
       loadStatus();
       loadPrivilege();
+      loadNetwork();
       loadUpdateSection();
       loadMigrationSection();
     }
 
     let rawVisible = false;
     let currentServiceState = null;
+
+    async function loadNetwork() {
+      const accountEl = document.getElementById('network-account');
+      const listEl = document.getElementById('network-connections');
+      try {
+        const res = await API.get('/system/network');
+        const { account, available, connections } = res.data;
+        const who = (account.domain ? account.domain + '\\' : '') + account.username;
+        accountEl.textContent = `El servicio corre como: ${who}`;
+        document.getElementById('network-unavailable').classList.toggle('hidden', available !== false);
+        if (!connections.length) {
+          listEl.textContent = 'No hay conexiones de red abiertas con credenciales (se abren al primer uso de una carpeta de red).';
+          return;
+        }
+        listEl.innerHTML = `
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs text-slate-500 border-b border-white/5"><tr><th class="py-2 pr-4">Recurso</th><th class="py-2 pr-4">Credencial</th><th class="py-2">Conectado</th></tr></thead>
+            <tbody>${connections.map((c) => `
+              <tr class="border-b border-white/5 last:border-0">
+                <td class="py-2 pr-4 font-mono text-slate-300">${UI.escapeHtml('\\\\' + c.server + '\\' + c.share)}</td>
+                <td class="py-2 pr-4 text-slate-300">${c.credentialName ? UI.escapeHtml(c.credentialName) : '<span class="text-slate-500">(credencial eliminada)</span>'}</td>
+                <td class="py-2 text-slate-400">${UI.escapeHtml(UI.formatDate(c.connectedAt))}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>`;
+      } catch (err) {
+        accountEl.textContent = 'No se pudo consultar la cuenta del servicio';
+        listEl.innerHTML = `<span class="text-red-400">${UI.escapeHtml(err.message)}</span>`;
+        UI.toast('Error: ' + err.message, 'error');
+      }
+    }
 
     async function loadPrivilege() {
       try {

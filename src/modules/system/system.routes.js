@@ -4,6 +4,10 @@ const express = require('express');
 const { execFile, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const networkSession = require('../../core/network/network-session');
+const { createWinNet } = require('../../core/network/win-net');
+const credentialsService = require('../credentials/credentials.service');
 const { requireAuth } = require('../auth/auth.middleware');
 const { success, fromError } = require('../../utils/response');
 const { ForbiddenError, AppError } = require('../../utils/errors');
@@ -60,6 +64,38 @@ router.get('/status', (req, res) => {
     const state = stateMatch ? stateMatch[1] : 'UNKNOWN';
     return success(res, { installed: true, state, raw: text.trim() });
   });
+});
+
+// GET /api/system/network
+// Cuenta con la que corre el servicio y conexiones de red abiertas con credenciales (sin contraseñas)
+let winNetInstance = null;
+function isWinNetAvailable() {
+  try {
+    if (!winNetInstance) winNetInstance = createWinNet();
+    return winNetInstance.isAvailable();
+  } catch (err) {
+    logger.warn('System: no se pudo comprobar la disponibilidad de las credenciales de red', { message: err.message });
+    return false;
+  }
+}
+
+router.get('/network', (req, res) => {
+  try {
+    const names = new Map(credentialsService.listCredentials().map((c) => [c.id, c.name]));
+    // Se resuelve en cada petición (no al cargar el módulo) para que la sesión sea sustituible en tests
+    const connections = networkSession.getNetworkSession().listConnections().map((c) => ({
+      server: c.server,
+      share: c.share,
+      credentialId: c.credentialId,
+      credentialName: names.get(c.credentialId) || null,
+      connectedAt: c.connectedAt,
+    }));
+    return success(res, {
+      account: { username: os.userInfo().username, domain: process.env.USERDOMAIN || null },
+      available: isWinNetAvailable(),
+      connections,
+    });
+  } catch (err) { return fromError(res, err); }
 });
 
 // POST /api/system/start
