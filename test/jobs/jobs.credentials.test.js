@@ -90,7 +90,12 @@ async function runWithStub(stub) {
   jobsService.saveFieldMaps(job.id, [{ sql_field: 'id', api_field: 'id', transform: 'none', sort_order: 0 }]);
   const original = credentialAccess.withFolderAccess;
   const calls = [];
-  credentialAccess.withFolderAccess = async (target, fn) => { calls.push(target); return stub(target, fn); };
+  // La lectura del origen (conexión sin credencial) pasa a la función real; solo se simula la salida con credencial
+  credentialAccess.withFolderAccess = async (target, fn) => {
+    if (!target.credentialId) return fn();
+    calls.push(target);
+    return stub(target, fn);
+  };
   try {
     await executeJob(job.id);
   } finally {

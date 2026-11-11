@@ -3,7 +3,9 @@
 const crypto = require('crypto');
 const { getDb } = require('../../config/database');
 const { encrypt, decrypt, encryptObject, decryptObject } = require('../../services/encryption.service');
-const { NotFoundError, ConflictError } = require('../../utils/errors');
+const { NotFoundError, ConflictError, ValidationError } = require('../../utils/errors');
+const { assertAssignable } = require('../credentials/credentials.service');
+const { credentialAccess } = require('../credentials/credential-access.service');
 const { getSourceService } = require('../../services/sources/index');
 
 function now() { return new Date().toISOString(); }
@@ -26,6 +28,28 @@ function sanitize(conn) {
   safe.trust_cert = Boolean(safe.trust_cert);
   safe.is_active = Boolean(safe.is_active);
   return safe;
+}
+
+const FILE_SOURCE_TYPES = new Set(['csv', 'excel']);
+
+/** La credencial de red solo aplica a orígenes de archivo con ruta UNC (la credencial debe existir). */
+function assertNetworkCredential(sourceType, filePath, credentialId) {
+  if (!credentialId) return;
+  if (!FILE_SOURCE_TYPES.has(sourceType)) {
+    throw new ValidationError('las credenciales de red solo aplican a orígenes CSV y Excel');
+  }
+  assertAssignable(credentialId, filePath);
+}
+
+/**
+ * Ejecuta `fn` con acceso al archivo de la conexión: con credencial de red conecta antes y reconecta una vez;
+ * sin ella no hace nada (cuenta del servicio). `conn` es el resultado de getConnectionConfig.
+ */
+function withConnectionAccess(conn, fn) {
+  return credentialAccess.withFolderAccess(
+    { path: conn.config && conn.config.file_path, credentialId: conn.network_credential_id },
+    fn,
+  );
 }
 
 function listConnections() {
@@ -128,17 +152,20 @@ function createConnection(data) {
     legacyPassword = null;
   }
 
+  assertNetworkCredential(sourceType, configObj.file_path, data.network_credential_id);
   const encryptedConfig = encryptObject(configObj);
 
+  // `network_credential_id` va fuera del config cifrado: se consulta para el 409 al borrar la credencial
   db.prepare(`
-    INSERT INTO connections (id, name, source_type, host, port, database_name, username, password, encrypt, trust_cert, config, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    INSERT INTO connections (id, name, source_type, host, port, database_name, username, password, encrypt, trust_cert, config, is_active, created_at, updated_at, network_credential_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
   `).run(
     id, data.name, sourceType,
     host, port, databaseName, username, legacyPassword,
     encryptFlag, trustCertFlag,
     encryptedConfig,
-    n, n
+    n, n,
+    data.network_credential_id || null
   );
 
   return getConnection(id);
@@ -211,6 +238,18 @@ function updateConnection(id, data) {
     }
   }
 
+  // Estado efectivo (lo enviado + lo guardado): la credencial exige origen CSV/Excel con ruta UNC
+  if (data.network_credential_id !== undefined) fields.network_credential_id = data.network_credential_id || null;
+  const effectiveCredentialId = fields.network_credential_id !== undefined ? fields.network_credential_id : existing.network_credential_id;
+  if (effectiveCredentialId) {
+    let effectiveConfig = {};
+    if (fields.config) effectiveConfig = decryptObject(fields.config);
+    else if (existing.config) {
+      try { effectiveConfig = decryptObject(existing.config); } catch (_e) { effectiveConfig = {}; }
+    }
+    assertNetworkCredential(sourceType, effectiveConfig.file_path, effectiveCredentialId);
+  }
+
   if (Object.keys(fields).length > 0) {
     const setClauses = Object.keys(fields).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE connections SET ${setClauses}, updated_at = ? WHERE id = ?`)
@@ -235,21 +274,21 @@ function deleteConnection(id) {
 
 async function testConnection(id) {
   const conn = getConnectionConfig(id);
-  return getSourceService(conn.source_type).test(conn.config);
+  return withConnectionAccess(conn, () => getSourceService(conn.source_type).test(conn.config));
 }
 
 async function getTables(id) {
   const conn = getConnectionConfig(id);
-  return getSourceService(conn.source_type).getTables(conn.config);
+  return withConnectionAccess(conn, () => getSourceService(conn.source_type).getTables(conn.config));
 }
 
 async function getFields(id, tableName) {
   const conn = getConnectionConfig(id);
-  return getSourceService(conn.source_type).getFields(conn.config, tableName);
+  return withConnectionAccess(conn, () => getSourceService(conn.source_type).getFields(conn.config, tableName));
 }
 
 module.exports = {
   listConnections, getConnection, getConnectionWithPassword, getConnectionConfig,
   createConnection, updateConnection, deleteConnection,
-  testConnection, getTables, getFields,
+  testConnection, getTables, getFields, withConnectionAccess,
 };

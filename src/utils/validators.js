@@ -69,6 +69,7 @@ const createConnectionSchema = z.object({
   name: z.string().min(1).max(200).trim(),
   source_type: z.enum(['sqlserver', 'csv', 'excel']).default('sqlserver'),
   config: z.record(z.unknown()).default({}),
+  network_credential_id: uuidSchema.optional().nullable(),
 }).superRefine((val, ctx) => {
   const schema = configSchemas[val.source_type];
   if (!schema) return;
@@ -86,6 +87,7 @@ const updateConnectionSchema = z.object({
   name: z.string().min(1).max(200).trim().optional(),
   source_type: z.enum(['sqlserver', 'csv', 'excel']).optional(),
   config: z.record(z.unknown()).optional(),
+  network_credential_id: uuidSchema.optional().nullable(),
 }).superRefine((val, ctx) => {
   if (!val.source_type || !val.config) return;
   const schema = configSchemas[val.source_type]?.partial();

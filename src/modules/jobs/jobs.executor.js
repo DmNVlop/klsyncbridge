@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { getDb } = require('../../config/database');
-const { getConnectionWithPassword } = require('../connections/connections.service');
+const { getConnectionWithPassword, withConnectionAccess } = require('../connections/connections.service');
 const { getApiConfigRaw } = require('../api-configs/api-configs.service');
 const { getJob, getFieldMaps, updateJobStatus, getSnapshot } = require('./jobs.service');
 const {
@@ -128,7 +128,8 @@ async function executeJob(jobId) {
       date_field: job.date_field,
       syncState,
     };
-    const records = await sourceSvc.getRecords(conn.config || conn, jobContext);
+    // Origen de archivo con credencial de red: conecta antes de leer (en SQL Server no hay credencial y pasa directo)
+    const records = await withConnectionAccess(conn, () => sourceSvc.getRecords(conn.config || conn, jobContext));
     recordsRead = records.length;
     logger.info(`Job "${job.name}" - registros leídos: ${recordsRead}`, { job_id: jobId });
 
