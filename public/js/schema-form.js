@@ -2,7 +2,10 @@
 
 // Genera un formulario a partir de un JSON Schema plano (propiedades de primer nivel).
 // Tipos soportados: string, integer, number. Un campo con `resource: 'api_config'`
-// se pinta como <select> con las configuraciones de API recibidas en options.resources.
+// se pinta como <select> con los recursos recibidos en options.resources (api_config, network_credential…).
+// Si el campo con `resource` es opcional (no está en `required`), el selector ofrece primero
+// «Cuenta del servicio» con valor vacío (= sin recurso asignado); si es obligatorio, «— Selecciona —».
+// Un valor vacío no se envía en getValues(), así que el servidor lo recibe como ausente.
 // Requiere ui.js cargado antes (usa UI.escapeHtml).
 //
 // Uso:
@@ -18,13 +21,15 @@
     return value !== undefined && value !== null && value !== '';
   }
 
-  function buildControl(esc, controlId, name, def, value, resources) {
+  function buildControl(esc, controlId, name, def, value, resources, isRequired) {
     const common = `id="${controlId}" data-field="${esc(name)}" class="${INPUT_CLS}"`;
 
     if (def.resource) {
       const list = resources[def.resource] || [];
       const known = list.some((item) => String(item.id) === String(value));
-      let options = '<option value="">— Selecciona —</option>';
+      let options = isRequired
+        ? '<option value="">— Selecciona —</option>'
+        : '<option value="">Cuenta del servicio</option>';
       options += list.map((item) => {
         const selected = String(item.id) === String(value) ? ' selected' : '';
         return `<option value="${esc(item.id)}"${selected}>${esc(item.name)}</option>`;
@@ -67,7 +72,7 @@
       return `
         <div class="mb-4">
           <label for="${esc(controlId)}" class="block text-xs font-medium text-slate-400 mb-1">${esc(def.title || name)}${marker}</label>
-          ${buildControl(esc, esc(controlId), name, def, value, resources)}
+          ${buildControl(esc, esc(controlId), name, def, value, resources, required.has(name))}
           ${hint}
           <p data-error-for="${esc(name)}" class="hidden text-xs text-red-400 mt-1"></p>
         </div>`;
