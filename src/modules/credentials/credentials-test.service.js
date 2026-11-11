@@ -40,6 +40,8 @@ async function testFolderAccess(input, actor, overrides = {}) {
   if (!parseUncRoot(path)) throw new ValidationError(UNC_ONLY_MESSAGE);
 
   const useEphemeral = Boolean(input.password);
+  // Sin credencial guardada ni contraseña se probaría con la cuenta del servicio y el resultado engañaría
+  if (!credentialId && !useEphemeral) throw new ValidationError('Indica la contraseña para probar la credencial');
   let access = deps.credentialAccess;
   let accessId = credentialId;
   let ephemeralId = null;

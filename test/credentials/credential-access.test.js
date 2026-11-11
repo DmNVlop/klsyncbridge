@@ -61,6 +61,9 @@ test('falla dos veces ⇒ error clasificado y exactamente una reconexión', asyn
     access.withFolderAccess({ path: PATH, credentialId: 'c1' }, async () => { attempts += 1; throw fsError('EACCES'); }),
     (err) => {
       assert.equal(err.name, 'NetworkAccessError');
+      assert.equal(err.kind, 'credential');
+      assert.equal(err.retryable, false);
+      assert.equal(err.fsCode, 'EACCES');
       assert.equal(err.message.includes(SECRET), false);
       return true;
     },

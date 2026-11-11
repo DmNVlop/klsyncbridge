@@ -51,11 +51,17 @@ function createCredentialAccess({ getSecret, session, logger: log }) {
         return await fn();
       } catch (secondError) {
         if (!secondError || !RETRYABLE_FS_CODES.has(secondError.code)) throw secondError;
-        throw new NetworkAccessError({
-          kind: 'unavailable',
+        // Permisos: con la credencial conectada, la cuenta no puede; lo arregla una persona (no se reintenta).
+        // Resto (ENOENT/UNKNOWN): la red o la ruta pueden volver; reintentable.
+        // 'unavailable' queda reservado para «koffi no carga en este equipo».
+        const permissionDenied = secondError.code === 'EACCES' || secondError.code === 'EPERM';
+        const error = new NetworkAccessError({
+          kind: permissionDenied ? 'credential' : 'network',
           message: describeFsError(secondError, path, { hasCredential: true }),
-          retryable: true,
+          retryable: !permissionDenied,
         });
+        error.fsCode = secondError.code;
+        throw error;
       }
     }
   }
