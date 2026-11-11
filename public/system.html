@@ -191,6 +191,19 @@
         <pre id="update-log" class="text-xs font-mono text-slate-300 bg-base rounded-lg p-4 border border-white/5 max-h-56 overflow-y-auto whitespace-pre-wrap leading-relaxed"></pre>
       </div>
 
+      <!-- Pasar al instalador (solo instalaciones antiguas) -->
+      <div id="migration-section" class="hidden mt-5 pt-5 border-t border-white/5">
+        <h3 class="text-sm font-medium text-white mb-1">Pasar al instalador</h3>
+        <p class="text-xs text-slate-500 mb-3">
+          Esta instalación es antigua (carpeta propia). Pasarla al instalador copia los datos a C:\ProgramData\KLSyncBridge y la deja con actualizaciones automáticas.
+        </p>
+        <ul id="migration-reasons" class="hidden list-disc pl-5 mb-3 text-xs text-amber-400 space-y-1"></ul>
+        <button onclick="runMigration()" id="btn-run-migration" title="Descarga el instalador, para el servicio actual, copia los datos a C:\ProgramData\KLSyncBridge e instala el servicio nuevo. Si algo falla, se restaura el servicio anterior."
+          class="px-4 py-2 bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/30 text-blue-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          Pasar al instalador
+        </button>
+      </div>
+
       <!-- Reiniciando -->
       <div id="update-restarting" class="hidden">
         <div class="flex items-center gap-2 mb-2">
@@ -224,6 +237,7 @@
       loadStatus();
       loadPrivilege();
       loadUpdateSection();
+      loadMigrationSection();
     }
 
     let rawVisible = false;
@@ -454,6 +468,77 @@
       }
     }
 
+    // Bloque «Pasar al instalador»: solo en instalaciones antiguas (legacy-zip)
+    async function loadMigrationSection() {
+      try {
+        const res = await API.get('/system/installer-migration');
+        const d = res.data;
+        const section = document.getElementById('migration-section');
+        if (d.mode !== 'legacy-zip') { section.classList.add('hidden'); return; }
+        section.classList.remove('hidden');
+        document.getElementById('btn-run-migration').disabled = !d.available;
+        const list = document.getElementById('migration-reasons');
+        list.textContent = '';
+        d.reasons.forEach(reason => {
+          const li = document.createElement('li');
+          li.textContent = reason;
+          list.appendChild(li);
+        });
+        list.classList.toggle('hidden', d.reasons.length === 0);
+      } catch (e) {
+        console.warn('No se pudo comprobar el paso al instalador:', e.message);
+      }
+    }
+
+    // Lee el streaming de texto de un POST de actualización; true si llegó la línea «Actualización completada»
+    async function streamUpdate(url, updateLog) {
+      let finished = false;
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + AUTH.getToken(), 'Content-Type': 'application/json' },
+        });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          updateLog.textContent += chunk;
+          updateLog.scrollTop = updateLog.scrollHeight;
+          if (chunk.includes('Actualizaci') && chunk.includes('completada')) finished = true;
+        }
+      } catch (e) {
+        updateLog.textContent += '\n❌ Error de conexión: ' + e.message;
+      }
+      return finished;
+    }
+
+    async function runMigration() {
+      const ok = await UI.confirmDialog(
+        'Pasar al instalador',
+        'El servicio se detendrá entre 1 y 2 minutos. Los datos se copiarán a C:\\ProgramData\\KLSyncBridge y la carpeta actual se conservará como copia de seguridad. Si algo falla, se restaura solo el servicio anterior. ¿Continuar?',
+        'Pasar al instalador', 'bg-blue-700 hover:bg-blue-600 text-white'
+      );
+      if (!ok) return;
+
+      showUpdateState('progress');
+      document.getElementById('btn-check-update').disabled = true;
+      document.getElementById('btn-run-migration').disabled = true;
+      const updateLog = document.getElementById('update-log');
+      updateLog.textContent = '';
+
+      const finished = await streamUpdate('/api/system/migrate-to-installer', updateLog);
+      if (finished) {
+        UI.clearUpdateIndicators();
+        showUpdateState('restarting');
+        waitForRestart(body => body.data.updateMode === 'installer', 'instalador', 'migration');
+      } else {
+        document.getElementById('btn-check-update').disabled = false;
+        loadMigrationSection();
+      }
+    }
+
     async function runUpdate() {
       const ok = await UI.confirmDialog(
         'Actualizar KLSyncBridge',
@@ -469,35 +554,13 @@
       const updateLog = document.getElementById('update-log');
       updateLog.textContent = '';
 
-      const token = AUTH.getToken();
       const previousVersion = document.getElementById('current-version').textContent.trim();
-      let finished = false;
-
-      try {
-        const response = await fetch('/api/system/update', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        });
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          updateLog.textContent += chunk;
-          updateLog.scrollTop = updateLog.scrollHeight;
-          if (chunk.includes('Actualizaci') && chunk.includes('completada')) finished = true;
-        }
-      } catch (e) {
-        updateLog.textContent += '\n❌ Error de conexión: ' + e.message;
-      }
+      const finished = await streamUpdate('/api/system/update', updateLog);
 
       if (finished) {
         UI.clearUpdateIndicators();
         showUpdateState('restarting');
-        waitForRestart(previousVersion);
+        waitForRestart(body => body.data.version !== previousVersion, 'versión nueva', 'update');
       } else {
         document.getElementById('btn-check-update').disabled = false;
         document.getElementById('btn-run-update').disabled = false;
@@ -506,31 +569,48 @@
 
     // Espera a que el servicio vuelva con una versión distinta (el Setup tarda 1-2 min en parar, instalar y arrancar).
     // Consulta /api/health (sin auth); si el servicio vuelve con la misma versión al final del plazo, algo falló.
-    function waitForRestart(previousVersion) {
+    // isBack(body) decide si el servicio ya ha vuelto como se esperaba (versión distinta, o modo instalador).
+    function waitForRestart(isBack, expectation, kind) {
       const startedAt = Date.now();
       const maxWaitMs = 5 * 60 * 1000;
       const restartingText = document.querySelector('#update-restarting p');
+      let wasDown = false;
       const interval = setInterval(async () => {
         const elapsed = Math.round((Date.now() - startedAt) / 1000);
-        restartingText.textContent = `Esperando a que el servicio vuelva con la versión nueva (${elapsed} s). La página se recargará sola.`;
+        restartingText.textContent = `Esperando a que el servicio vuelva con ${expectation === 'instalador' ? 'el instalador' : 'la versión nueva'} (${elapsed} s). La página se recargará sola.`;
         try {
           const res = await fetch('/api/health', { cache: 'no-store' });
           if (res.ok) {
             const body = await res.json();
-            if (body.data.version !== previousVersion) {
+            if (isBack(body)) {
               clearInterval(interval);
-              UI.toast(`Actualizado a v${body.data.version}`, 'success');
+              UI.toast(kind === 'migration' ? `Ahora usa el instalador (v${body.data.version})` : `Actualizado a v${body.data.version}`, 'success');
               setTimeout(() => window.location.reload(), 1500);
+              return;
+            }
+            // Migración: si el servicio cae y vuelve en modo antiguo, el Setup falló y se restauró el anterior.
+            if (kind === 'migration' && wasDown) {
+              clearInterval(interval);
+              showUpdateState('idle');
+              UI.toast('No se pudo pasar al instalador; se ha restaurado la instalación anterior. Revisa C:\\ProgramData\\KLSyncBridge\\logs (setup-migration-*.log, installer-setup.log y legacy-rollback.log).', 'error');
+              loadStatus();
+              loadUpdateSection();
+              loadMigrationSection();
               return;
             }
           }
         } catch {
           // servicio parado mientras se instala: seguir esperando
+          wasDown = true;
         }
         if (Date.now() - startedAt >= maxWaitMs) {
           clearInterval(interval);
           showUpdateState('idle');
-          UI.toast('El servicio no ha vuelto con la versión nueva en 5 minutos. Revisa C:\\ProgramData\\KLSyncBridge\\logs (setup-*.log e installer-setup.log) o el estado del servicio arriba.', 'error');
+          if (kind === 'migration') {
+            UI.toast('El servicio no ha vuelto con el instalador en 5 minutos. Revisa C:\\ProgramData\\KLSyncBridge\\logs (setup-migration-*.log, installer-setup.log y legacy-rollback.log).', 'error');
+          } else {
+            UI.toast('El servicio no ha vuelto con la versión nueva en 5 minutos. Revisa C:\\ProgramData\\KLSyncBridge\\logs (setup-*.log e installer-setup.log) o el estado del servicio arriba.', 'error');
+          }
           loadStatus();
           loadUpdateSection();
         }

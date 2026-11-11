@@ -7,6 +7,7 @@ const path = require('path');
 const axios = require('axios');
 const { z } = require('zod');
 const env = require('../../../config/env');
+const logger = require('../../../services/logger.service');
 const { manifestUrlFor, compareVersions } = require('./manifest');
 
 const SETUP_URL_PREFIX = 'https://github.com/DmNVlop/klsyncbridge/releases/download/';
@@ -49,46 +50,101 @@ async function download(url, filePath) {
   });
 }
 
+/** Descarga y valida el manifiesto del último Release. */
+async function fetchInstallerManifest() {
+  const { data } = await axios.get(manifestUrlFor('installer'), { timeout: 8000 });
+  return assertManifest(data);
+}
+
+/** Descarga el Setup a <DATA_DIR>/../updates y comprueba su sha256; si no coincide, lo borra y lanza error. */
+async function downloadVerifiedSetup(manifest, { log }) {
+  const updatesDir = path.resolve(env.DATA_DIR, '..', 'updates');
+  fs.mkdirSync(updatesDir, { recursive: true });
+  const setupPath = path.join(updatesDir, `KLSyncBridge-Setup-${manifest.version}.exe`);
+
+  log(`▶ Descargando v${manifest.version}...`);
+  await download(manifest.setupUrl, setupPath);
+  const actual = await sha256File(setupPath);
+  if (actual !== manifest.sha256) {
+    fs.rmSync(setupPath, { force: true });
+    throw new Error('La descarga no coincide con el sha256 publicado; se ha descartado');
+  }
+  log('✅ Descarga verificada');
+  return setupPath;
+}
+
+/** Lanza el Setup desacoplado de este proceso (sobrevive a la parada del servicio). */
+function launchSetupDetached(setupPath, logPath) {
+  const child = spawn('cmd.exe', ['/d', '/s', '/c', buildSetupCommand(setupPath, logPath)], {
+    detached: true,
+    stdio: 'ignore',
+    windowsVerbatimArguments: true,
+  });
+  child.unref();
+}
+
+// Devuelve true si el Setup quedó lanzado (el llamador no libera el cerrojo: el proceso morirá).
 async function runInstallerUpdate({ res, log, localVersion }) {
   try {
     const current = localVersion();
-    const { data } = await axios.get(manifestUrlFor('installer'), { timeout: 8000 });
-    const manifest = assertManifest(data);
+    const manifest = await fetchInstallerManifest();
     if (compareVersions(manifest.version, current) <= 0) {
       log(`ℹ️ Ya estás en la última versión (v${current})`);
-      return res.end();
+      res.end();
+      return false;
     }
 
-    const updatesDir = path.resolve(env.DATA_DIR, '..', 'updates');
-    fs.mkdirSync(updatesDir, { recursive: true });
-    const setupPath = path.join(updatesDir, `KLSyncBridge-Setup-${manifest.version}.exe`);
     const logPath = path.join(path.resolve(env.LOG_DIR), `setup-${manifest.version}.log`);
-
-    log(`▶ Descargando v${manifest.version}...`);
-    await download(manifest.setupUrl, setupPath);
-    const actual = await sha256File(setupPath);
-    if (actual !== manifest.sha256) {
-      fs.rmSync(setupPath, { force: true });
-      throw new Error('La descarga no coincide con el sha256 publicado; se ha descartado');
-    }
-    log('✅ Descarga verificada');
+    const setupPath = await downloadVerifiedSetup(manifest, { log });
 
     log(`▶ Lanzando el instalador (log: ${logPath}). El servicio se reiniciará solo.`);
     // La UI espera esta línea para pasar a «esperando reinicio» (mismo texto que el final de legacy-zip).
     log(`✅ Actualización completada: instalando v${manifest.version}, el servicio vuelve en 1-2 minutos.`);
     res.end();
-    const child = spawn('cmd.exe', ['/d', '/s', '/c', buildSetupCommand(setupPath, logPath)], {
-      detached: true,
-      stdio: 'ignore',
-      windowsVerbatimArguments: true,
-    });
-    child.unref();
-    return undefined;
+    launchSetupDetached(setupPath, logPath);
+    return true;
   } catch (err) {
     log(`❌ Error durante la actualización: ${err.message}`);
     log('ℹ️ No se ha cambiado nada: sigue la versión actual.');
-    return res.end();
+    res.end();
+    return false;
   }
 }
 
-module.exports = { runInstallerUpdate, sha256File, buildSetupCommand, assertManifest };
+/** Política de versión de la migración: el mismo Release o uno posterior sirve; uno anterior, no. */
+function assertMigrationVersion(manifestVersion, localVersion) {
+  if (compareVersions(manifestVersion, localVersion) < 0) {
+    throw new Error(`El último instalador publicado (v${manifestVersion}) es más antiguo que la versión instalada (v${localVersion})`);
+  }
+}
+
+/**
+ * Paso de una instalación antigua (legacy-zip) al instalador. Devuelve true si el Setup quedó lanzado.
+ */
+async function runInstallerMigration({ res, log, localVersion, username }) {
+  try {
+    const current = localVersion();
+    const manifest = await fetchInstallerManifest();
+    assertMigrationVersion(manifest.version, current);
+
+    const logPath = path.join(path.resolve(env.LOG_DIR), `setup-migration-${manifest.version}.log`);
+    const setupPath = await downloadVerifiedSetup(manifest, { log });
+
+    log(`▶ Lanzando el instalador (log: ${logPath}). El servicio se detendrá y volverá en 1-2 minutos.`);
+    logger.info('System: lanzando Setup de migración al instalador', { user: username, version: manifest.version });
+    log(`✅ Actualización completada: pasando al instalador (v${manifest.version}), el servicio vuelve en 1-2 minutos.`);
+    res.end();
+    launchSetupDetached(setupPath, logPath);
+    return true;
+  } catch (err) {
+    log(`❌ Error durante el paso al instalador: ${err.message}`);
+    log('ℹ️ No se ha cambiado nada: sigue la instalación actual.');
+    res.end();
+    return false;
+  }
+}
+
+module.exports = {
+  runInstallerUpdate, runInstallerMigration, fetchInstallerManifest, downloadVerifiedSetup, launchSetupDetached,
+  assertMigrationVersion, sha256File, buildSetupCommand, assertManifest,
+};

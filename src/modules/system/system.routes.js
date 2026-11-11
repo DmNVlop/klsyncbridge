@@ -13,7 +13,9 @@ const { getUpdateMode } = require('./updaters/update-mode');
 const { execSc } = require('../../utils/windows-console');
 const { updateChecker, localVersion } = require('./update-check.service');
 const { runLegacyZipUpdate } = require('./updaters/legacy-zip.updater');
-const { runInstallerUpdate } = require('./updaters/installer.updater');
+const { runInstallerUpdate, runInstallerMigration } = require('./updaters/installer.updater');
+const { checkMigrationPreconditions } = require('./updaters/installer-migration.preconditions');
+const operationLock = require('./updaters/operation-lock');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -256,12 +258,73 @@ router.post('/update', async (req, res) => {
     logger.info('System update: ' + msg);
   }
 
-  const mode = getUpdateMode();
-  log(`▶ Modo de actualización: ${mode}`);
-  if (mode === 'installer') {
-    return runInstallerUpdate({ res, log, localVersion });
+  if (!operationLock.tryAcquire()) {
+    log('❌ Ya hay una actualización en curso; espera a que termine.');
+    return res.end();
   }
-  return runLegacyZipUpdate({ res, log, localVersion, runScript });
+  let launched = false;
+  try {
+    const mode = getUpdateMode();
+    log(`▶ Modo de actualización: ${mode}`);
+    if (mode === 'installer') {
+      launched = await runInstallerUpdate({ res, log, localVersion });
+      return undefined;
+    }
+    return await runLegacyZipUpdate({ res, log, localVersion, runScript });
+  } finally {
+    // Con el Setup lanzado el cerrojo se queda tomado: el proceso morirá al parar el servicio.
+    if (!launched) operationLock.release();
+  }
+});
+
+// GET /api/system/installer-migration
+// ¿Puede esta instalación antigua pasar al instalador? Si no, devuelve los motivos.
+router.get('/installer-migration', async (req, res) => {
+  try {
+    const result = await checkMigrationPreconditions();
+    return success(res, { ...result, mode: getUpdateMode() });
+  } catch (err) {
+    logger.error('System: error comprobando el paso al instalador', { error: err.message });
+    return fromError(res, err);
+  }
+});
+
+// POST /api/system/migrate-to-installer
+// Texto plano en streaming, igual que /update: descarga el Setup del Release y lo lanza en silencio.
+router.post('/migrate-to-installer', async (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('X-Accel-Buffering', 'no');
+
+  function log(msg) {
+    res.write(msg + '\n');
+    logger.info('System migration: ' + msg);
+  }
+
+  if (!operationLock.tryAcquire()) {
+    log('❌ Ya hay una actualización en curso; espera a que termine.');
+    return res.end();
+  }
+  let launched = false;
+  try {
+    // El cerrojo ya es nuestro: no cuenta como «otra operación en curso».
+    const check = await checkMigrationPreconditions({ isBusy: () => false });
+    if (!check.available) {
+      log('❌ No se puede pasar al instalador:');
+      check.reasons.forEach((reason) => log(`   - ${reason}`));
+      log('ℹ️ No se ha cambiado nada: sigue la instalación actual.');
+      return res.end();
+    }
+    logger.info('System: paso al instalador solicitado', { user: req.user.username, version: localVersion() });
+    launched = await runInstallerMigration({ res, log, localVersion, username: req.user.username });
+    return undefined;
+  } catch (err) {
+    logger.error('System: error en el paso al instalador', { error: err.message });
+    log(`❌ Error inesperado: ${err.message}`);
+    return res.end();
+  } finally {
+    if (!launched) operationLock.release();
+  }
 });
 
 module.exports = router;

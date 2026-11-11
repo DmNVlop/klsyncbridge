@@ -50,6 +50,26 @@ Mensaje «Los ficheros se han copiado, pero no se pudo configurar el servicio» 
 
 **Desde una instalación antigua (carpeta con `instalar.bat`, v2.2.0 o anterior):** ejecutar el Setup sin desinstalar nada. Detecta el servicio antiguo, lo para, lo sustituye y copia `data\` y `.env` a `ProgramData` (solo si allí aún no hay datos). Se entra con el usuario y la contraseña de siempre. La carpeta antigua queda intacta como copia de seguridad: se puede borrar cuando se compruebe que todo funciona.
 
+### Pasar de una instalación antigua al instalador
+
+Para las instalaciones antiguas (servicio desde su propia carpeta, con el Node del sistema) que ya están en la 2.3.0 o posterior, **Sistema › Pasar al instalador** hace el cambio sin tocar el Setup a mano.
+
+**Requisitos** (si falta alguno, el botón sale deshabilitado y explica el motivo):
+- KLSyncBridge corre como servicio desde su carpeta actual (`src\daemon\klsyncbridge.exe` y `klsyncbridge.xml` presentes).
+- El proceso tiene privilegios de administrador.
+- No hay otra actualización en curso y hay un Release publicado igual o más reciente que la versión instalada.
+
+**Qué hace:** descarga el Setup del último Release, comprueba su sha256 y lo lanza en silencio. El Setup anota un marcador (`C:\ProgramData\KLSyncBridge\legacy-migration.json`), para el servicio antiguo, copia `data\` y `.env` a `C:\ProgramData\KLSyncBridge` e instala el servicio nuevo. La carpeta antigua no se toca: queda como copia de seguridad. La página espera hasta 5 minutos a que el servicio vuelva ya en modo instalador.
+
+**Rollback automático:** si algo falla tras parar el servicio antiguo, el Setup ejecuta `rollback-legacy.ps1`: elimina el servicio nuevo, aparta los datos copiados (`data.failed-<fecha>`, `.env.failed-<fecha>`, para poder reintentar), reinstala el servicio antiguo con su `klsyncbridge.xml`, lo arranca y comprueba `/api/health`. Si todo va bien borra el marcador; si no, lo conserva.
+
+**Logs** (`C:\ProgramData\KLSyncBridge\logs`): `setup-migration-<versión>.log` (Setup), `installer-setup.log` (post-instalación) y `legacy-rollback.log` (rollback).
+
+**Lanzar el rollback a mano** (PowerShell como administrador; solo hace algo si existe el marcador):
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\ProgramData\KLSyncBridge\installer\rollback-legacy.ps1 -AppDir "C:\Program Files\KLSyncBridge" -DataRoot C:\ProgramData\KLSyncBridge
+```
+
 **Desinstalar:** Configuración de Windows › **Aplicaciones** › KLSyncBridge › Desinstalar. Pregunta si borrar también los datos (`ProgramData\KLSyncBridge`); por defecto se conservan, y una instalación posterior los reutiliza.
 
 ---

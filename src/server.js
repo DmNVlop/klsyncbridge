@@ -8,6 +8,7 @@ const { ForbiddenError, AppError } = require('./utils/errors');
 const { requireAuth } = require('./modules/auth/auth.middleware');
 const { getDb } = require('./config/database');
 const { updateChecker, localVersion } = require('./modules/system/update-check.service');
+const { getUpdateMode } = require('./modules/system/updaters/update-mode');
 const eventsService = require('./services/events.service');
 
 function createServer() {
@@ -43,7 +44,7 @@ function createServer() {
   app.get('/api/health', (_req, res) => {
     try {
       getDb().prepare('SELECT 1').get();
-      return success(res, { status: 'up', version: localVersion(), uptimeSeconds: Math.round(process.uptime()) });
+      return success(res, { status: 'up', version: localVersion(), uptimeSeconds: Math.round(process.uptime()), updateMode: getUpdateMode() });
     } catch (err) {
       return fromError(res, new AppError('Base de datos no disponible: ' + err.message, 'HEALTH_DB_DOWN', 503));
     }
