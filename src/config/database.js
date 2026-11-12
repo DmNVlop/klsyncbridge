@@ -501,6 +501,29 @@ function runMigrations(db) {
       if (!cols.find(c => c.name === 'std_store_name')) db.prepare('ALTER TABLE jobs ADD COLUMN std_store_name TEXT').run();
       if (!cols.find(c => c.name === 'std_header')) db.prepare('ALTER TABLE jobs ADD COLUMN std_header TEXT').run();
     },
+
+    // v15: biblioteca de plantillas de mapeo + origen del mapeo en jobs
+    () => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS mapping_templates (
+          id                TEXT PRIMARY KEY,
+          name              TEXT NOT NULL UNIQUE COLLATE NOCASE,
+          description       TEXT,
+          target_kind       TEXT NOT NULL,
+          fields            TEXT NOT NULL,
+          filter_expression TEXT,
+          reader            TEXT,
+          sample_fields     TEXT,
+          origin            TEXT,
+          created_at        TEXT NOT NULL,
+          created_by        TEXT,
+          updated_at        TEXT NOT NULL,
+          updated_by        TEXT
+        );
+      `);
+      const cols = db.prepare('PRAGMA table_info(jobs)').all();
+      if (!cols.find(c => c.name === 'mapping_origin')) db.prepare('ALTER TABLE jobs ADD COLUMN mapping_origin TEXT').run();
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {
