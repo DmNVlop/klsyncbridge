@@ -1,5 +1,5 @@
 {
-  "version": "2.3.1",
-  "release_date": "2026-11-11",
-  "changelog": "- Instalador autocontenido (sin Node, Python ni Build Tools)\n- Nuevo botón «Pasar al instalador» en Sistema: tras esta actualización, un clic deja la instalación en modo instalador; si algo falla, vuelve sola a la versión anterior\n- Aviso de nueva versión en todas las pantallas (se comprueba al arrancar y cada 6 h)\n- Tras «Actualizar ahora», la pantalla espera a que el servicio vuelva con la versión nueva\n- Primer acceso: la contraseña del admin se elige en la UI\n- Corregido: bucle de renovación de token ante respuestas 401"
+  "version": "2.4.0",
+  "release_date": "2026-11-12",
+  "changelog": "- Credenciales de red: carpetas compartidas de Windows (\\servidor\\recurso) con usuario y contraseña cifrada, botón «Probar» (lectura y escritura) y avisos claros; asignables a salidas de jobs, orígenes CSV/Excel y carpetas vigiladas\n- Jobs: nueva salida «Almacén Ardis (.STD)»: un job = un almacén, claves STD con nombre en español, NOLIMIT=1 y AANT=0 por defecto, y el fichero solo se reescribe si cambian los datos\n- Plantillas de mapeo: crear, duplicar, aplicar a jobs, detectar campos con un fichero de ejemplo, vista previa, exportar/importar JSON e instrucciones para una IA\n- Automatizaciones: nuevo paso «Transformar y exportar» (plantilla sobre un fichero vigilado ⇒ .STD, CSV/JSON o API)\n- Instalador: arranca y comprueba el servicio al terminar; la vuelta atrás ya no actúa si la versión nueva está sana; actualización correcta de instalaciones antiguas dentro de ProgramData\n- Sistema: cuenta del servicio, conexiones de red y recomendación de cuenta dedicada «klsync»\n- Textos de la interfaz revisados"
 }
