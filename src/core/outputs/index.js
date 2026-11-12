@@ -5,7 +5,7 @@
  *
  * Contrato de una salida:
  * {
- *   type: string,                 // 'file' | 'ardis_std' (3b: 'endpoint')
+ *   type: string,                 // 'file' | 'ardis_std' | 'endpoint'
  *   formats: string[],            // valores de jobs.file_formats que atiende
  *   fullSet: boolean,             // true => recibe TODOS los registros mapeados (antes del diff) en cada ejecución
  *   async write({ items, config }) => {
@@ -24,9 +24,10 @@
 const { AppError } = require('../../utils/errors');
 const fileOutput = require('./file.output');
 const ardisStdOutput = require('./ardis-std/ardis-std.output');
+const endpointOutput = require('./endpoint.output');
 
 // Alta de una salida nueva = añadirla aquí. Ningún llamador tiene un if por formato.
-const OUTPUTS = [fileOutput, ardisStdOutput];
+const OUTPUTS = [fileOutput, ardisStdOutput, endpointOutput];
 
 function parseFormats(fileFormats) {
   const list = String(fileFormats || '').split(',').map(f => f.trim().toLowerCase()).filter(Boolean);
@@ -47,6 +48,13 @@ function findByFormats(fileFormats) {
   return [...found][0];
 }
 
+/** Salida por tipo ('file' | 'ardis_std' | 'endpoint'): la usan los consumidores que eligen el tipo explícitamente. */
+function findByType(type) {
+  const output = OUTPUTS.find(o => o.type === type);
+  if (!output) throw new AppError(`Tipo de salida no soportado: ${type}`, 'INVALID_OUTPUT_TYPE', 400);
+  return output;
+}
+
 function listOutputs() { return OUTPUTS.slice(); }
 
-module.exports = { parseFormats, findByFormats, listOutputs };
+module.exports = { parseFormats, findByFormats, findByType, listOutputs };
