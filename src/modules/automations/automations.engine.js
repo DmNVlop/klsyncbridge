@@ -7,12 +7,18 @@ const { resolveApiConfig } = require('../../core/resources/api-config-resolver')
 const {
   AUTOMATION_HEALTH: H, AUTOMATION_ITEM_STATUSES: S, AUTOMATION_RETRY, AUTOMATION_ATTEMPTS_RETENTION_DAYS,
 } = require('../../config/constants');
+const { getTemplate } = require('../mapping-templates/mapping-templates.service');
 const svc = require('./automations.service');
 const { triggers, steps } = require('./plugins/registry');
 const { createWorker } = require('./automations.worker');
 
 // Cómo se resuelve cada tipo de recurso referenciado en la configuración de un paso
-const RESOURCE_RESOLVERS = { api_config: resolveApiConfig };
+// mapping_template: plantilla viva (se recarga en cada ejecución); network_credential: solo el id (lo usa withFolderAccess)
+const RESOURCE_RESOLVERS = {
+  api_config: resolveApiConfig,
+  mapping_template: async (id) => getTemplate(id),
+  network_credential: async (id) => id,
+};
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const running = new Map(); // automationId ⇒ { trigger, worker }
@@ -21,7 +27,8 @@ let purgeTimer = null;
 async function resolveResources(resourceFields, config) {
   const resources = {};
   for (const { field, resource } of resourceFields) {
-    resources[field] = await RESOURCE_RESOLVERS[resource](config[field]);
+    // Campo de recurso opcional sin valor: no hay nada que resolver
+    resources[field] = config[field] ? await RESOURCE_RESOLVERS[resource](config[field]) : null;
   }
   return resources;
 }
@@ -160,4 +167,4 @@ function getRuntime(id) {
   return running.get(id) || null;
 }
 
-module.exports = { start, stopAll, reloadAutomation, stopAutomation, resume, resumeByApiConfig, resumeByCredential, wakeAutomation, getRuntime };
+module.exports = { resolveResources, start, stopAll, reloadAutomation, stopAutomation, resume, resumeByApiConfig, resumeByCredential, wakeAutomation, getRuntime };
