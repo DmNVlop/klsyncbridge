@@ -111,6 +111,14 @@
     const onRowRemoved = options.onRowRemoved || noop;
     const freeSource = Boolean(options.freeSource);
     const preserveDefaults = Boolean(options.preserveDefaults);
+    const targetHeaderEl = options.targetHeaderEl || null; // <th> de la columna destino (cambia en modo .STD)
+    const apiHeaderText = targetHeaderEl ? targetHeaderEl.textContent : '';
+    let stdMode = false;
+
+    const TARGET_HELP_API = 'Nombre del campo en el JSON de salida. Usa <span class="font-mono">.</span> para anidado: <span class="font-mono">datos.color</span>.';
+    const TARGET_HELP_STD = 'Clave del almacén .STD (p. ej. <span class="font-mono">MATERIAAL</span>). Elige una de la lista o escribe una clave válida.';
+    const PLACEHOLDER_API = 'campo o padre.hijo';
+    const PLACEHOLDER_STD = 'clave STD (p. ej. MATERIAAL)';
     const sourceListId = `${uid}-sources`;
     let sourceList = null;
 
@@ -202,9 +210,9 @@
 
       row.innerHTML = `
         <td class="py-2 px-2" style="min-width:140px">
-          <input type="text" class="inp map-api" placeholder="campo o padre.hijo" list="${esc(listId)}" value="${esc(prefilledTarget || (data && data.api) || '')}">
+          <input type="text" class="inp map-api" placeholder="${stdMode ? PLACEHOLDER_STD : PLACEHOLDER_API}" list="${esc(listId)}" value="${esc(prefilledTarget || (data && data.api) || '')}">
           <p class="map-std-error hidden text-xs text-red-400 mt-1"></p>
-          <p class="text-xs text-slate-600 mt-1">Nombre del campo en el JSON de salida. Usa <span class="font-mono">.</span> para anidado: <span class="font-mono">datos.color</span>.</p>
+          <p class="map-target-help text-xs text-slate-600 mt-1">${stdMode ? TARGET_HELP_STD : TARGET_HELP_API}</p>
         </td>
         <td class="py-2 px-2" style="min-width:90px">
           <div class="flex gap-1 flex-wrap">
@@ -363,11 +371,24 @@
       return Array.from(tbody.querySelectorAll('.map-api')).map((i) => i.value.trim()).filter(Boolean);
     }
 
+    /** Cabecera, ayuda y placeholder de la columna destino: «Clave STD» en modo .STD, texto API en otro caso. */
+    function applyTargetWording(std) {
+      stdMode = std;
+      if (targetHeaderEl) targetHeaderEl.textContent = std ? 'Clave STD' : apiHeaderText;
+      tbody.querySelectorAll('tr').forEach((r) => {
+        const input = r.querySelector('.map-api');
+        const help = r.querySelector('.map-target-help');
+        if (input) input.placeholder = std ? PLACEHOLDER_STD : PLACEHOLDER_API;
+        if (help) help.innerHTML = std ? TARGET_HELP_STD : TARGET_HELP_API;
+      });
+    }
+
     /**
      * Marca las claves destino no válidas por fila y pinta las obligatorias que faltan.
      * `std`: si el destino es .STD; `pattern`: RegExp de claves; `requiredEl`: contenedor con `.std-req[data-key]`.
      */
     function applyStdHints({ std, pattern, requiredEl }) {
+      applyTargetWording(Boolean(std));
       const mapped = new Set();
       tbody.querySelectorAll('tr').forEach((r) => {
         const input = r.querySelector('.map-api');

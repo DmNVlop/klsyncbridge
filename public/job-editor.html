@@ -285,7 +285,7 @@
     <!-- Step 3 -->
     <div id="step-3" class="hidden bg-surface rounded-xl border border-white/5 p-6">
       <h2 class="font-medium text-white mb-2">Paso 3: Mapeo de campos</h2>
-      <p class="text-xs text-slate-500 mb-5">Define cómo se construye el objeto que se envía a la API. Cada fila es un campo del JSON de salida. Elige el modo según la fuente del valor:</p>
+      <p class="text-xs text-slate-500 mb-5" data-std-text="Define qué se escribe en el almacén .STD de Ardis. Cada fila es una clave del almacén. Elige el modo según la fuente del valor:">Define cómo se construye el objeto que se envía a la API. Cada fila es un campo del JSON de salida. Elige el modo según la fuente del valor:</p>
 
       <!-- Modos hint cards -->
       <div class="grid grid-cols-3 gap-3 mb-6 text-xs">
@@ -295,15 +295,15 @@
             <span class="font-semibold text-blue-400">Campo Fuente</span>
           </div>
           <p class="text-slate-500">Toma el valor directamente de una columna del origen de datos. Puedes aplicar una transformación (mayúsculas, número, fecha ISO, etc.).</p>
-          <p class="text-slate-600 mt-1.5">Ej: columna <span class="font-mono text-slate-400">Descripcion</span> → campo API <span class="font-mono text-slate-400">nombre</span></p>
+          <p class="text-slate-600 mt-1.5" data-std-html="Ej: columna <span class=&quot;font-mono text-slate-400&quot;>Descripcion</span> → clave STD <span class=&quot;font-mono text-slate-400&quot;>MATERIAAL</span>">Ej: columna <span class="font-mono text-slate-400">Descripcion</span> → campo API <span class="font-mono text-slate-400">nombre</span></p>
         </div>
         <div class="bg-base rounded-lg border border-emerald-500/20 p-3">
           <div class="flex items-center gap-1.5 mb-1.5">
             <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
             <span class="font-semibold text-emerald-400">Fijo</span>
           </div>
-          <p class="text-slate-500">Asigna un valor literal constante al campo API. Siempre envía el mismo valor, independientemente de los datos del origen.</p>
-          <p class="text-slate-600 mt-1.5">Ej: <span class="font-mono text-slate-400">espesor</span> = <span class="font-mono text-slate-400">10</span> — o <span class="font-mono text-slate-400">activo</span> = <span class="font-mono text-slate-400">true</span></p>
+          <p class="text-slate-500" data-std-text="Asigna un valor literal constante a la clave del almacén. Siempre escribe el mismo valor, independientemente de los datos del origen.">Asigna un valor literal constante al campo API. Siempre envía el mismo valor, independientemente de los datos del origen.</p>
+          <p class="text-slate-600 mt-1.5" data-std-html="Ej: <span class=&quot;font-mono text-slate-400&quot;>NOLIMIT</span> = <span class=&quot;font-mono text-slate-400&quot;>1</span> — o <span class=&quot;font-mono text-slate-400&quot;>AANT</span> = <span class=&quot;font-mono text-slate-400&quot;>0</span>">Ej: <span class="font-mono text-slate-400">espesor</span> = <span class="font-mono text-slate-400">10</span> — o <span class="font-mono text-slate-400">activo</span> = <span class="font-mono text-slate-400">true</span></p>
         </div>
         <div class="bg-base rounded-lg border border-purple-500/20 p-3">
           <div class="flex items-center gap-1.5 mb-1.5">
@@ -358,7 +358,7 @@
         <table class="w-full text-sm mb-4">
           <thead>
             <tr class="border-b border-white/5">
-              <th class="text-left py-2 px-2 text-slate-400 font-medium">Campo API</th>
+              <th id="map-target-header" class="text-left py-2 px-2 text-slate-400 font-medium">Campo API</th>
               <th class="text-left py-2 px-2 text-slate-400 font-medium">Modo</th>
               <th class="text-left py-2 px-2 text-slate-400 font-medium">Fuente / Valor</th>
               <th class="text-left py-2 px-2 text-slate-400 font-medium">Transform</th>
@@ -592,7 +592,7 @@
                     </div>
                   </div>
                   <div class="mt-2 text-slate-600">
-                    <span class="font-medium text-slate-500">Tip:</span> Usa <span class="font-mono">==</span> con NULL (<span class="font-mono">CAMPO == null</span> captura tanto <span class="font-mono">null</span> como <span class="font-mono">undefined</span>). Usa <span class="font-mono">===</span> cuando necesités distinguir tipos exactos.
+                    <span class="font-medium text-slate-500">Tip:</span> Usa <span class="font-mono">==</span> con NULL (<span class="font-mono">CAMPO == null</span> captura tanto <span class="font-mono">null</span> como <span class="font-mono">undefined</span>). Usa <span class="font-mono">===</span> cuando necesites distinguir tipos exactos.
                   </div>
                 </div>
 
@@ -751,7 +751,7 @@
               <p class="text-xs text-slate-500">Operadores: <span class="font-mono">&gt; &lt; &gt;= &lt;= == != && || !</span></p>
               <p class="text-xs text-slate-600">Anidamientos: <span class="font-mono">(ESPESOR >= 18 && TIPO == "MDF") || ACTIVO == 0</span></p>
               <p class="text-xs text-slate-600">Texto incluye: <span class="font-mono">String(DESCRIPCION).includes("Blanco")</span></p>
-              <p class="text-xs text-slate-600 mt-1">Variables disponibles: <span id="filter-vars" class="font-mono text-slate-400">(cargá la tabla en Paso 1)</span></p>
+              <p class="text-xs text-slate-600 mt-1">Variables disponibles: <span id="filter-vars" class="font-mono text-slate-400">(carga la tabla en el paso 1)</span></p>
             </div>
             <span class="expr-adv-toggle text-xs mt-3 inline-block" onclick="toggleFilterAdvanced()">Builder visual ↙</span>
           </div>
@@ -774,7 +774,7 @@
       </div>
 
       <div id="json-preview" class="mt-5 p-4 bg-base rounded-lg border border-white/5">
-        <p class="text-xs text-slate-500 mb-2">Preview JSON</p>
+        <p id="json-preview-title" class="text-xs text-slate-500 mb-2">Preview JSON</p>
         <pre id="json-preview-text" class="text-xs text-slate-300 font-mono whitespace-pre-wrap">{ }</pre>
       </div>
       <div class="flex justify-between mt-6">
@@ -1080,7 +1080,20 @@
           .filter(k => k.required).map(k => `<span class="std-req font-mono" data-key="${k.key}">${k.key}</span>`).join(', ');
       }
       mapEditor.setTargetList(std ? 'std-key-options' : 'api-schema-fields');
+      // Textos del paso 3: «clave del almacén» (.STD) frente a «campo API»
+      document.querySelectorAll('[data-std-text]').forEach(el => {
+        if (el.dataset.apiText === undefined) el.dataset.apiText = el.textContent;
+        el.textContent = std ? el.dataset.stdText : el.dataset.apiText;
+      });
+      document.querySelectorAll('[data-std-html]').forEach(el => {
+        if (el.dataset.apiHtml === undefined) el.dataset.apiHtml = el.innerHTML;
+        el.innerHTML = std ? el.dataset.stdHtml : el.dataset.apiHtml;
+      });
+      document.getElementById('example-schema-block').classList.toggle('hidden', std || getDestinationMode() !== 'file');
+      document.getElementById('json-preview-title').textContent = std ? 'Vista previa (.STD)' : 'Preview JSON';
       refreshStdMappingHints();
+      renderSchemaPanel();
+      updateJsonPreview();
     }
 
     // Errores por fila (clave no válida) y obligatorias que faltan (en rojo, sin bloquear el guardado)
@@ -1127,7 +1140,7 @@
       const panel = document.getElementById('schema-panel');
       const container = document.getElementById('schema-fields');
 
-      if (!config || !config.payload_schema) {
+      if (isStdSelected() || !config || !config.payload_schema) {
         panel.classList.add('hidden');
         return;
       }
@@ -1242,6 +1255,7 @@
 
     function updateJsonPreview() {
       const maps = getMapRows();
+      if (isStdSelected()) { renderStdPreview(maps); return; }
       const preview = {};
       maps.forEach(m => {
         const keys = m.api_field.split('.');
@@ -1256,6 +1270,26 @@
         }
       });
       document.getElementById('json-preview-text').textContent = JSON.stringify(preview, null, 2);
+    }
+
+    // Vista previa .STD: una línea CLAVE=<origen> por fila; NOLIMIT y AANT por defecto si no están mapeadas
+    function renderStdPreview(maps) {
+      const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const keys = new Set();
+      const lines = [];
+      maps.forEach(m => {
+        const key = String(m.api_field || '').trim();
+        if (!key || key.toUpperCase() === 'ID') return;
+        keys.add(key.toUpperCase());
+        const origin = m.source_type === 'static' ? (m.default_value || '')
+          : m.source_type === 'expression' ? `expr: ${m.expression || '...'}`
+          : `<${m.sql_field}>`;
+        lines.push(esc(`${key}=${origin}`));
+      });
+      [['NOLIMIT', '1'], ['AANT', '0']].forEach(([k, v]) => {
+        if (!keys.has(k)) lines.push(`<span class="text-slate-500">${k}=${v}</span>`);
+      });
+      document.getElementById('json-preview-text').innerHTML = lines.join('\n');
     }
 
     // ── Row filter ─────────────────────────────────────────────────
@@ -1376,7 +1410,7 @@
       const expr = document.getElementById('j-filter-expression').value.trim();
       const badge = document.getElementById('filter-active-badge');
       badge.classList.toggle('hidden', !(enabled && expr));
-      document.getElementById('filter-vars').textContent = sqlFields.map(f=>f.name).join(', ') || '(cargá la tabla en Paso 1)';
+      document.getElementById('filter-vars').textContent = sqlFields.map(f=>f.name).join(', ') || '(carga la tabla en el paso 1)';
     }
 
     function getFilterData() {

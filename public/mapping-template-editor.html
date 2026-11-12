@@ -118,7 +118,7 @@
         <table class="w-full text-sm mb-4">
           <thead>
             <tr class="border-b border-white/5">
-              <th class="text-left py-2 px-2 text-slate-400 font-medium">Campo destino</th>
+              <th id="map-target-header" class="text-left py-2 px-2 text-slate-400 font-medium">Campo destino</th>
               <th class="text-left py-2 px-2 text-slate-400 font-medium">Modo</th>
               <th class="text-left py-2 px-2 text-slate-400 font-medium">Fuente / Valor</th>
               <th class="text-left py-2 px-2 text-slate-400 font-medium">Transform</th>
@@ -185,6 +185,7 @@
       getSourceFields: () => detectedFields,
       getTargetListId: () => (isStd() ? 'std-key-options' : ''),
       freeSource: true,
+      targetHeaderEl: $('map-target-header'),
       preserveDefaults: true,
       onChange: () => {},
       onTargetChange: () => refreshStdHints(),
