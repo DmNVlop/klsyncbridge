@@ -52,3 +52,17 @@ test('NetworkAccessError: propiedades, código y estado HTTP por tipo', () => {
   assert.equal(new NetworkAccessError({ kind: 'unknown', message: 'x' }).statusCode, 500);
   assert.ok(credential instanceof Error);
 });
+
+test('classifyWinError: acceso denegado a un recurso administrativo (D$) lo explica', () => {
+  const info = classifyWinError(5, { server: '192.168.0.105', share: 'D$' });
+  assert.equal(info.kind, 'credential');
+  assert.equal(info.retryable, false);
+  assert.match(info.message, /D\$/);
+  assert.match(info.message, /recursos administrativos/);
+  assert.match(info.message, /Comparte la carpeta concreta/);
+});
+
+test('classifyWinError: acceso denegado a un recurso normal mantiene el mensaje genérico', () => {
+  const info = classifyWinError(5, { server: '192.168.0.105', share: 'D' });
+  assert.equal(info.message, 'Acceso denegado: la cuenta no tiene permisos sobre el recurso');
+});

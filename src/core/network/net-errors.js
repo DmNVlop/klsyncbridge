@@ -20,6 +20,24 @@ function conflictMessage(server, source = 'windows') {
     + (source === 'credential' ? '' : ', o cierra la otra conexión');
 }
 
+const ACCESS_DENIED = 5;
+
+/** Recurso administrativo de Windows (C$, D$, ADMIN$…): su nombre termina en «$». */
+function isAdminShare(share) {
+  return typeof share === 'string' && share.endsWith('$');
+}
+
+/**
+ * Acceso denegado a un recurso administrativo: Windows (UAC remoto) quita los privilegios de administrador a las
+ * cuentas locales que entran por la red, aunque sean del grupo Administradores.
+ * @param {string} share
+ * @returns {string}
+ */
+function adminShareMessage(share) {
+  return `Acceso denegado a ${share}: los recursos administrativos (C$, D$…) no admiten cuentas locales desde la red, `
+    + 'aunque sean administradoras (protección de Windows). Comparte la carpeta concreta y da permisos a la cuenta';
+}
+
 const CREDENTIAL_MESSAGES = {
   1326: 'Usuario o contraseña incorrectos',
   86: 'La contraseña no es correcta',
@@ -42,10 +60,13 @@ const NETWORK_MESSAGES = {
 /**
  * Clasifica un código Win32 devuelto por WNetAddConnection2W / WNetCancelConnection2W.
  * @param {number} code
- * @param {{ server?: string }} [context] servidor afectado, para los mensajes que lo nombran
+ * @param {{ server?: string, share?: string }} [context] servidor y recurso afectados, para los mensajes que los nombran
  * @returns {{ kind: 'credential'|'conflict'|'network'|'unknown', retryable: boolean, message: string }}
  */
-function classifyWinError(code, { server } = {}) {
+function classifyWinError(code, { server, share } = {}) {
+  if (code === ACCESS_DENIED && isAdminShare(share)) {
+    return { kind: 'credential', retryable: false, message: adminShareMessage(share) };
+  }
   if (CREDENTIAL_MESSAGES[code]) return { kind: 'credential', retryable: false, message: CREDENTIAL_MESSAGES[code] };
   if (code === 1219) return { kind: 'conflict', retryable: false, message: conflictMessage(server) };
   if (NETWORK_MESSAGES[code]) return { kind: 'network', retryable: true, message: NETWORK_MESSAGES[code] };
