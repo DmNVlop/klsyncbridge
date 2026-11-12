@@ -11,8 +11,12 @@
  * 5. Realiza el commit de release y crea el tag de git correspondiente.
  * 
  * Uso:
- *   node scripts/release.js [patch|minor|major|version_custom]
- *   npm run release -- [patch|minor|major]
+ *   node scripts/release.js [patch|minor|major|rc|version_custom]
+ *   npm run release -- [patch|minor|major|rc]
+ *   npm run release -- 2.4.0-rc.1 --allow-any-branch   (prerelease explícito)
+ *
+ * Prereleases: solo el identificador "rc" (X.Y.Z-rc.N, N >= 1). El tag vX.Y.Z-rc.N
+ * lo publica el workflow release.yml como prerelease de GitHub (cualquier tag con "-").
  */
 
 const fs = require('fs');
@@ -20,9 +24,8 @@ const path = require('path');
 const { execSync } = require('child_process');
 const readline = require('readline');
 
-// Asegurar que estamos trabajando en la raíz del proyecto
+// Raíz del proyecto (el chdir se hace en main para poder importar el módulo en tests)
 const ROOT = path.join(__dirname, '..');
-process.chdir(ROOT);
 
 // Configuración por defecto
 const GITHUB_USER = 'DmNVlop';
@@ -114,47 +117,101 @@ function runCommand(command) {
   }
 }
 
+const VERSION_REGEX = /^(\d+)\.(\d+)\.(\d+)(?:-rc\.([1-9]\d*))?$/;
+
 /**
- * Valida la sintaxis de la versión.
+ * Descompone una versión "X.Y.Z" o "X.Y.Z-rc.N".
+ * Devuelve { major, minor, patch, rc } (rc = null si es estable) o null si no es válida.
  */
-function isValidVersion(v) {
-  return /^\d+\.\d+\.\d+$/.test(v);
+function parseVersion(v) {
+  if (typeof v !== 'string') return null;
+  const m = VERSION_REGEX.exec(v);
+  if (!m) return null;
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: Number(m[3]),
+    rc: m[4] === undefined ? null : Number(m[4]),
+  };
 }
 
 /**
- * Incrementa la versión según el tipo.
+ * Valida la sintaxis de la versión (estable X.Y.Z o prerelease X.Y.Z-rc.N con N >= 1).
+ */
+function isValidVersion(v) {
+  return parseVersion(v) !== null;
+}
+
+/**
+ * Mensaje claro de por qué una versión no es válida.
+ */
+function describeInvalidVersion(v) {
+  if (/^\d+\.\d+\.\d+-/.test(v)) {
+    return `Prerelease no soportado: "${v}". Solo se admite el identificador "rc" con número >= 1 (ej: 2.4.0-rc.1).`;
+  }
+  return `Versión no válida: "${v}". Usa "X.Y.Z" o "X.Y.Z-rc.N".`;
+}
+
+/**
+ * Incrementa la versión según el tipo (major, minor, patch, rc).
+ * Reglas semver desde una base rc (X.Y.Z-rc.N):
+ *   - patch => X.Y.Z (finaliza el prerelease)
+ *   - minor => X.Y.0 si Z es 0 (finaliza), si no X.(Y+1).0
+ *   - major => X.0.0 si Y y Z son 0 (finaliza), si no (X+1).0.0
+ *   - rc    => X.Y.Z-rc.(N+1)
+ * Desde una base estable, "rc" no se puede calcular (la siguiente base es decisión
+ * humana): devuelve null y el llamador pide una versión explícita.
+ * Devuelve null si la versión actual o el tipo no son válidos.
  */
 function semverIncrement(current, type) {
-  const parts = current.split('.').map(Number);
-  if (parts.length !== 3) return null;
+  const v = parseVersion(current);
+  if (!v || typeof type !== 'string') return null;
+  const { major, minor, patch, rc } = v;
+  const isPre = rc !== null;
 
   switch (type.toLowerCase()) {
     case 'major':
-      return `${parts[0] + 1}.0.0`;
+      if (isPre && minor === 0 && patch === 0) return `${major}.0.0`;
+      return `${major + 1}.0.0`;
     case 'minor':
-      return `${parts[0]}.${parts[1] + 1}.0`;
+      if (isPre && patch === 0) return `${major}.${minor}.0`;
+      return `${major}.${minor + 1}.0`;
     case 'patch':
-      return `${parts[0]}.${parts[1]}.${parts[2] + 1}`;
+      if (isPre) return `${major}.${minor}.${patch}`;
+      return `${major}.${minor}.${patch + 1}`;
+    case 'rc':
+      if (!isPre) return null;
+      return `${major}.${minor}.${patch}-rc.${rc + 1}`;
     default:
       return null;
   }
 }
 
 /**
- * Compara dos versiones semver.
+ * Compara dos versiones semver (con soporte de -rc.N).
  * Devuelve > 0 si a > b, 0 si a == b, < 0 si a < b.
+ * Un rc es menor que la estable de la misma base; los rc se comparan numéricamente.
  */
 function compareVersions(a, b) {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    const diff = (pa[i] || 0) - (pb[i] || 0);
+  const va = parseVersion(a);
+  const vb = parseVersion(b);
+  if (!va || !vb) {
+    throw new Error(`No se pueden comparar versiones no válidas: "${a}" y "${b}"`);
+  }
+  for (const key of ['major', 'minor', 'patch']) {
+    const diff = va[key] - vb[key];
     if (diff !== 0) return diff;
   }
-  return 0;
+  if (va.rc === vb.rc) return 0;
+  if (va.rc === null) return 1;
+  if (vb.rc === null) return -1;
+  return va.rc - vb.rc;
 }
 
 async function main() {
+  // Asegurar que estamos trabajando en la raíz del proyecto
+  process.chdir(ROOT);
+
   console.log(`${COLORS.bright}${COLORS.magenta}====================================================`);
   console.log('       KLSyncBridge — Release Automation Script');
   console.log(`====================================================${COLORS.reset}`);
@@ -234,12 +291,21 @@ async function main() {
   let nextVersion = '';
 
   if (versionArg) {
-    if (['major', 'minor', 'patch'].includes(versionArg.toLowerCase())) {
+    if (['major', 'minor', 'patch', 'rc'].includes(versionArg.toLowerCase())) {
       nextVersion = semverIncrement(baseVersion, versionArg);
+      if (!nextVersion) {
+        // Solo ocurre con "rc" desde una versión estable
+        logError(`La versión actual (${baseVersion}) es estable: no se puede calcular el siguiente rc, porque la próxima versión base (minor/patch) es una decisión tuya.`);
+        logInfo('Indica la versión explícita, por ejemplo: npm run release -- 2.4.0-rc.1');
+        process.exit(1);
+      }
     } else if (isValidVersion(versionArg)) {
       nextVersion = versionArg;
+    } else if (/^\d+\.\d+\.\d+-/.test(versionArg)) {
+      logError(describeInvalidVersion(versionArg));
+      process.exit(1);
     } else {
-      logError(`Tipo de versión o incremento no válido: "${versionArg}". Debe ser "major", "minor", "patch" o una versión "X.Y.Z".`);
+      logError(`Tipo de versión o incremento no válido: "${versionArg}". Debe ser "major", "minor", "patch", "rc" o una versión "X.Y.Z" / "X.Y.Z-rc.N".`);
       process.exit(1);
     }
   }
@@ -251,25 +317,41 @@ async function main() {
       nextVersion = semverIncrement(baseVersion, 'patch');
       logInfo(`Usando incremento por defecto (patch) debido a --yes: ${nextVersion}`);
     } else {
+      const baseIsRc = parseVersion(baseVersion).rc !== null;
       console.log('\nSelecciona cómo deseas incrementar la versión:');
-      console.log(`  1) patch (${semverIncrement(baseVersion, 'patch')})`);
-      console.log(`  2) minor (${semverIncrement(baseVersion, 'minor')})`);
-      console.log(`  3) major (${semverIncrement(baseVersion, 'major')})`);
-      console.log('  4) Personalizada');
-      
-      const option = await askQuestion('\nElige una opción (1-4) o escribe la versión directamente: ');
-      
-      if (option === '1' || option.toLowerCase() === 'patch') {
-        nextVersion = semverIncrement(baseVersion, 'patch');
-      } else if (option === '2' || option.toLowerCase() === 'minor') {
-        nextVersion = semverIncrement(baseVersion, 'minor');
-      } else if (option === '3' || option.toLowerCase() === 'major') {
-        nextVersion = semverIncrement(baseVersion, 'major');
-      } else if (option === '4' || option.toLowerCase() === 'personalizada') {
-        const custom = await askQuestion('Escribe la nueva versión (ej: 1.1.0): ');
+      if (baseIsRc) {
+        // Base rc: el siguiente rc es la opción 1; patch finaliza el prerelease
+        console.log(`  1) rc (${semverIncrement(baseVersion, 'rc')})`);
+        console.log(`  2) patch / finalizar (${semverIncrement(baseVersion, 'patch')})`);
+        console.log(`  3) minor (${semverIncrement(baseVersion, 'minor')})`);
+        console.log(`  4) major (${semverIncrement(baseVersion, 'major')})`);
+        console.log('  5) Personalizada');
+      } else {
+        console.log(`  1) patch (${semverIncrement(baseVersion, 'patch')})`);
+        console.log(`  2) minor (${semverIncrement(baseVersion, 'minor')})`);
+        console.log(`  3) major (${semverIncrement(baseVersion, 'major')})`);
+        console.log('  4) Personalizada');
+      }
+
+      const customOption = baseIsRc ? '5' : '4';
+      const optionsByNumber = baseIsRc
+        ? { '1': 'rc', '2': 'patch', '3': 'minor', '4': 'major' }
+        : { '1': 'patch', '2': 'minor', '3': 'major' };
+      const option = (await askQuestion(`\nElige una opción (1-${customOption}) o escribe la versión directamente: `)).trim();
+      const incrementType = optionsByNumber[option]
+        || (['patch', 'minor', 'major', 'rc'].includes(option.toLowerCase()) ? option.toLowerCase() : null);
+
+      if (incrementType) {
+        nextVersion = semverIncrement(baseVersion, incrementType);
+        if (!nextVersion) {
+          logError(`La versión actual (${baseVersion}) es estable: para un rc indica la versión explícita, por ejemplo: npm run release -- 2.4.0-rc.1`);
+          process.exit(1);
+        }
+      } else if (option === customOption || option.toLowerCase() === 'personalizada') {
+        const custom = await askQuestion('Escribe la nueva versión (ej: 1.1.0 o 2.4.0-rc.1): ');
         nextVersion = custom.trim();
-      } else if (isValidVersion(option.trim())) {
-        nextVersion = option.trim();
+      } else if (isValidVersion(option)) {
+        nextVersion = option;
       } else {
         logError('Opción inválida.');
         process.exit(1);
@@ -278,7 +360,7 @@ async function main() {
   }
 
   if (!isValidVersion(nextVersion)) {
-    logError(`La versión final calculada no tiene un formato semver válido: "${nextVersion}"`);
+    logError(`La versión final calculada no es válida. ${describeInvalidVersion(nextVersion)}`);
     process.exit(1);
   }
 
@@ -397,7 +479,11 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  logError(`Excepción no controlada: ${err.message}`);
-  process.exit(1);
-});
+module.exports = { parseVersion, isValidVersion, describeInvalidVersion, semverIncrement, compareVersions };
+
+if (require.main === module) {
+  main().catch((err) => {
+    logError(`Excepción no controlada: ${err.message}`);
+    process.exit(1);
+  });
+}
