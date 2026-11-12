@@ -124,3 +124,22 @@ test('nombre duplicado ⇒ ConflictError', () => {
   const created = newCredential();
   assert.throws(() => newCredential({ name: created.name }), ConflictError);
 });
+
+test('una credencial usada solo en un paso de automatización cuenta como uso y se encuentra para reanudar', () => {
+  const created = newCredential();
+  const db = getDb();
+  const ts = new Date().toISOString();
+  const automationId = crypto.randomUUID();
+  db.prepare(`INSERT INTO automations (id, name, trigger_type, trigger_config, created_at, updated_at)
+    VALUES (?, 'auto con paso', 'folder_watch', '{}', ?, ?)`).run(automationId, ts, ts);
+  db.prepare(`INSERT INTO automation_steps (id, automation_id, position, step_type, config) VALUES (?, ?, 0, 'map_export', ?)`)
+    .run(crypto.randomUUID(), automationId, JSON.stringify({ outputType: 'ardis_std', outputCredentialId: created.id }));
+
+  assert.throws(() => svc.deleteCredential(created.id, actor), (err) => {
+    assert.ok(err instanceof ConflictError);
+    assert.deepEqual(err.details.usages.automations.map((a) => a.id), [automationId]);
+    return true;
+  });
+  const automationsSvc = require('../../src/modules/automations/automations.service');
+  assert.deepEqual(automationsSvc.findAutomationIdsByCredential(created.id), [automationId]);
+});
