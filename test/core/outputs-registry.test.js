@@ -17,3 +17,10 @@ test('findByFormats: csv/json => file', () => {
 test('findByFormats: formato desconocido => error', () => {
   assert.throws(() => outputs.findByFormats('xml'), /Formato de salida no soportado: xml/);
 });
+
+test('findByFormats: ardis_std ⇒ salida de conjunto completo; mezclado con csv ⇒ error', () => {
+  const out = outputs.findByFormats('ardis_std');
+  assert.equal(out.type, 'ardis_std');
+  assert.equal(out.fullSet, true);
+  assert.throws(() => outputs.findByFormats('csv,ardis_std'), /no se pueden combinar/);
+});

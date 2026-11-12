@@ -23,9 +23,10 @@
 
 const { AppError } = require('../../utils/errors');
 const fileOutput = require('./file.output');
+const ardisStdOutput = require('./ardis-std/ardis-std.output');
 
 // Alta de una salida nueva = añadirla aquí. Ningún llamador tiene un if por formato.
-const OUTPUTS = [fileOutput];
+const OUTPUTS = [fileOutput, ardisStdOutput];
 
 function parseFormats(fileFormats) {
   const list = String(fileFormats || '').split(',').map(f => f.trim().toLowerCase()).filter(Boolean);
