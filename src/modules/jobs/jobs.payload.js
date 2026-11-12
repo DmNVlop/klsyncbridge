@@ -1,88 +1,14 @@
 'use strict';
 
 const crypto = require('crypto');
-const { TRANSFORMS } = require('../../config/constants');
 const logger = require('../../services/logger.service');
+const {
+  applyTransform, setNestedValue, evaluateExpression, resolveFieldValue, buildPayload, matchesFilter,
+} = require('../../core/data-pipeline');
 
-function applyTransform(value, transform, defaultValue) {
-  const val = (value === null || value === undefined) ? defaultValue : value;
-  if (val === null || val === undefined) return null;
-
-  switch (transform) {
-    case TRANSFORMS.UPPERCASE: return String(val).toUpperCase();
-    case TRANSFORMS.LOWERCASE: return String(val).toLowerCase();
-    case TRANSFORMS.TRIM: return String(val).trim();
-    case TRANSFORMS.NUMBER: return parseFloat(val);
-    case TRANSFORMS.BOOLEAN: return val === 1 || val === true || val === 'true' || val === 'True';
-    case TRANSFORMS.DATE_ISO: return val instanceof Date ? val.toISOString() : new Date(val).toISOString();
-    case TRANSFORMS.STRING: return String(val);
-    case TRANSFORMS.NONE:
-    default: return val;
-  }
-}
-
-function setNestedValue(obj, dotPath, value) {
-  const keys = dotPath.split('.');
-  let current = obj;
-  for (let i = 0; i < keys.length - 1; i++) {
-    if (!current[keys[i]]) current[keys[i]] = {};
-    current = current[keys[i]];
-  }
-  current[keys[keys.length - 1]] = value;
-}
-
+/** Filtro de fila de un job (compatibilidad: firma histórica record, job). */
 function filterRow(record, job) {
-  if (!job.row_filter_enabled || !job.row_filter_expression) return true;
-  const varNames = Object.keys(record);
-  const varValues = varNames.map(k => record[k]);
-  try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(...varNames, `"use strict"; return !!(${job.row_filter_expression});`);
-    return fn(...varValues);
-  } catch (err) {
-    logger.warn('Error evaluando row_filter_expression', { job_id: job.id, expression: job.row_filter_expression, error: err.message });
-    return true;
-  }
-}
-
-function evaluateExpression(expression, record) {
-  // Construye un contexto con todas las columnas de la fila como variables
-  const varNames = Object.keys(record);
-  const varValues = varNames.map(k => record[k]);
-  try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(...varNames, `"use strict"; return (${expression});`);
-    return fn(...varValues);
-  } catch (err) {
-    logger.warn('Error evaluando expresión de campo', { expression, error: err.message });
-    return null;
-  }
-}
-
-function resolveFieldValue(map, record) {
-  const sourceType = map.source_type || 'field';
-
-  if (sourceType === 'static') {
-    // Valor literal siempre — usa default_value como el valor fijo
-    return map.default_value ?? null;
-  }
-
-  if (sourceType === 'expression') {
-    const raw = evaluateExpression(map.expression, record);
-    return applyTransform(raw, map.transform, map.default_value);
-  }
-
-  // sourceType === 'field' (comportamiento original)
-  return applyTransform(record[map.sql_field], map.transform, map.default_value);
-}
-
-function buildPayload(record, fieldMaps) {
-  const payload = {};
-  for (const map of fieldMaps) {
-    const value = resolveFieldValue(map, record);
-    setNestedValue(payload, map.api_field, value);
-  }
-  return payload;
+  return matchesFilter(record, job.row_filter_enabled ? job.row_filter_expression : null, { job_id: job.id });
 }
 
 function computeHash(payload) {
