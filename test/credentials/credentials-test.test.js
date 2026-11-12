@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { testFolderAccess } = require('../../src/modules/credentials/credentials-test.service');
 const { createCredentialAccess } = require('../../src/modules/credentials/credential-access.service');
 const { createNetworkSession } = require('../../src/core/network/network-session');
-const { CONFLICT_MESSAGE } = require('../../src/core/network/net-errors');
+const { conflictMessage } = require('../../src/core/network/net-errors');
 const { ValidationError } = require('../../src/utils/errors');
 
 const SECRET = 'clave-de-prueba-xyz';
@@ -80,7 +80,7 @@ test('efímera contra servidor ya conectado con otra credencial ⇒ connect en r
   assert.equal(res.ok, false);
   assert.equal(res.steps[0].name, 'connect');
   assert.equal(res.steps[0].ok, false);
-  assert.equal(res.message, CONFLICT_MESSAGE);
+  assert.equal(res.message, conflictMessage('srv', 'credential'));
   assert.equal(disconnects.length, 0, 'no se cancela la conexión ajena');
   assert.equal(session.listConnections().length, 1);
   assert.equal(session.listConnections()[0].credentialId, 'cred-ajena');

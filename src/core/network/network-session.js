@@ -13,7 +13,7 @@
  */
 
 const { parseUncRoot } = require('./unc');
-const { classifyWinError, NetworkAccessError, CONFLICT_MESSAGE } = require('./net-errors');
+const { classifyWinError, NetworkAccessError, conflictMessage } = require('./net-errors');
 
 /**
  * @param {{ winNet: object, logger: object }} deps
@@ -36,7 +36,7 @@ function createNetworkSession({ winNet, logger }) {
     let entry = registry.get(server);
 
     if (entry && entry.credentialId !== credentialId) {
-      throw new NetworkAccessError({ kind: 'conflict', message: CONFLICT_MESSAGE });
+      throw new NetworkAccessError({ kind: 'conflict', message: conflictMessage(server, 'credential') });
     }
     if (entry && entry.shares.has(shareKey)) {
       if (!reconnect) return;
@@ -49,7 +49,7 @@ function createNetworkSession({ winNet, logger }) {
       // Un servidor sin recursos conectados no debe seguir reservado para esta credencial
       // (p. ej. tras una reconexión fallida), o bloquearía a las demás con un conflicto falso.
       if (entry && entry.shares.size === 0) registry.delete(server);
-      const info = classifyWinError(code);
+      const info = classifyWinError(code, { server });
       logger.warn('No se pudo conectar con el recurso de red', { server, share, credentialId, winCode: code, kind: info.kind });
       throw new NetworkAccessError({ ...info, winCode: code });
     }

@@ -19,6 +19,13 @@ test('classifyWinError: el mensaje de 1219 explica el límite de un usuario por 
   assert.match(classifyWinError(1219).message, /un usuario por servidor/);
 });
 
+test('classifyWinError: el mensaje de 1219 nombra el servidor real y la otra conexión de la sesión', () => {
+  const { message } = classifyWinError(1219, { server: '192.168.0.204' });
+  assert.ok(message.includes('\\\\192.168.0.204'), message);
+  assert.doesNotMatch(message, /SERVIDOR/);
+  assert.match(message, /Explorador/);
+});
+
 test('classifyWinError: reintentable solo en network', () => {
   assert.equal(classifyWinError(53).retryable, true);
   assert.equal(classifyWinError(1326).retryable, false);
