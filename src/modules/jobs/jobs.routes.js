@@ -13,8 +13,14 @@ const {
   STD_RECORD_KEYS, STD_DEFAULTS, STD_IGNORED_KEYS, STD_HEADER_KEYS, STD_KEY_PATTERN,
 } = require('../../core/outputs/ardis-std/std-keys');
 
+const { ValidationError } = require('../../utils/errors');
+
 const router = express.Router();
 router.use(requireAuth);
+
+function actorOf(req) {
+  return { id: req.user.sub, username: req.user.username };
+}
 
 router.get('/', (req, res) => {
   try { return success(res, jobsSvc.listJobs()); }
@@ -112,6 +118,19 @@ router.get('/:id/logs', (req, res) => {
 
 router.get('/:id/field-maps', (req, res) => {
   try { return success(res, jobsSvc.getFieldMaps(req.params.id)); }
+  catch (err) { return fromError(res, err); }
+});
+
+router.post('/:id/apply-template', (req, res) => {
+  try {
+    const templateId = req.body && req.body.templateId;
+    if (typeof templateId !== 'string' || templateId === '') throw new ValidationError('Indica la plantilla que quieres aplicar');
+    return success(res, jobsSvc.applyTemplate(req.params.id, templateId, actorOf(req)));
+  } catch (err) { return fromError(res, err); }
+});
+
+router.post('/:id/duplicate', (req, res) => {
+  try { return created(res, jobsSvc.duplicateJob(req.params.id, actorOf(req))); }
   catch (err) { return fromError(res, err); }
 });
 

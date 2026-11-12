@@ -6,6 +6,8 @@ const { NotFoundError, ConflictError, AppError } = require('../../utils/errors')
 const { JOB_STATUSES } = require('../../config/constants');
 const { assertAssignable } = require('../credentials/credentials.service');
 const { stdConfigIssues } = require('../../utils/validators');
+const { getTemplate } = require('../mapping-templates/mapping-templates.service');
+const { writeAudit } = require('../../services/audit.service');
 const logger = require('../../services/logger.service');
 
 function now() { return new Date().toISOString(); }
@@ -18,6 +20,11 @@ function parseStdHeader(raw) {
     logger.warn('std_header ilegible en un job; se ignora', { error: err.message });
     return {};
   }
+}
+
+function parseJson(raw) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (err) { return null; }
 }
 
 function serialize(job) {
@@ -38,6 +45,7 @@ function serialize(job) {
     std_header: parseStdHeader(job.std_header),
     csv_delimiter: job.csv_delimiter || ';',
     file_retention: job.file_retention || 'keep_all',
+    mapping_origin: parseJson(job.mapping_origin),
   };
 }
 
@@ -233,7 +241,75 @@ function saveFieldMaps(jobId, maps) {
   return getFieldMaps(jobId);
 }
 
+/** Fila de `field_maps` o campo de plantilla ⇒ forma que acepta `saveFieldMaps` (expression_meta aplanado en expr_*). */
+function toSaveableMap(map) {
+  const meta = typeof map.expression_meta === 'string' ? parseJson(map.expression_meta) : map.expression_meta;
+  return { ...map, ...(meta || {}) };
+}
+
+function assertNotRunning(job, action) {
+  if (job.last_run_status === JOB_STATUSES.RUNNING) {
+    throw new ConflictError(`No se puede ${action} una tarea en ejecución`);
+  }
+}
+
+/**
+ * Aplica una plantilla de mapeo al job: COPIA sus campos (sustituye los actuales) y guarda el origen.
+ * Cambios posteriores en la plantilla no afectan al job.
+ */
+function applyTemplate(jobId, templateId, actor) {
+  const db = getDb();
+  const job = db.prepare('SELECT id, name, last_run_status FROM jobs WHERE id = ?').get(jobId);
+  if (!job) throw new NotFoundError('Tarea');
+  assertNotRunning(job, 'modificar');
+  const template = getTemplate(templateId);
+  const origin = { templateId: template.id, templateName: template.name, at: now() };
+
+  db.transaction(() => {
+    saveFieldMaps(jobId, template.fields.map(toSaveableMap));
+    db.prepare('UPDATE jobs SET mapping_origin = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(origin), now(), jobId);
+  })();
+  writeAudit({
+    actor, action: 'apply_template', resourceType: 'job', resourceId: jobId,
+    summary: `aplicó la plantilla de mapeo «${template.name}» a la tarea «${job.name}»`,
+  });
+  return { job: getJob(jobId), fieldMaps: getFieldMaps(jobId) };
+}
+
+/** Nombre libre para la copia de un job: «X (copia)», «X (copia 2)», … */
+function freeJobCopyName(baseName) {
+  const exists = getDb().prepare('SELECT 1 FROM jobs WHERE name = ?');
+  let candidate = `${baseName} (copia)`;
+  let n = 2;
+  while (exists.get(candidate)) {
+    candidate = `${baseName} (copia ${n})`;
+    n += 1;
+  }
+  return candidate;
+}
+
+/** Duplica un job: inactivo, mismos ajustes y mapeos; sin snapshot, sync_state ni historial de ejecuciones. */
+function duplicateJob(id, actor) {
+  const db = getDb();
+  const source = getJob(id);
+  const copyId = db.transaction(() => {
+    const copy = createJob({ ...source, name: freeJobCopyName(source.name), is_active: false });
+    saveFieldMaps(copy.id, getFieldMaps(id).map(toSaveableMap));
+    if (source.mapping_origin) {
+      db.prepare('UPDATE jobs SET mapping_origin = ? WHERE id = ?').run(JSON.stringify(source.mapping_origin), copy.id);
+    }
+    return copy.id;
+  })();
+  const copy = getJob(copyId);
+  writeAudit({
+    actor, action: 'duplicate', resourceType: 'job', resourceId: copyId,
+    summary: `duplicó la tarea «${source.name}» como «${copy.name}»`,
+  });
+  return copy;
+}
+
 module.exports = {
+  applyTemplate, duplicateJob,
   listJobs, getJob, createJob, updateJob, deleteJob,
   activateJob, deactivateJob, updateJobStatus,
   getSnapshot, resetSnapshot,
