@@ -5,8 +5,20 @@ const { getDb } = require('../../config/database');
 const { NotFoundError, ConflictError, AppError } = require('../../utils/errors');
 const { JOB_STATUSES } = require('../../config/constants');
 const { assertAssignable } = require('../credentials/credentials.service');
+const { stdConfigIssues } = require('../../utils/validators');
+const logger = require('../../services/logger.service');
 
 function now() { return new Date().toISOString(); }
+
+function parseStdHeader(raw) {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    logger.warn('std_header ilegible en un job; se ignora', { error: err.message });
+    return {};
+  }
+}
 
 function serialize(job) {
   if (!job) return null;
@@ -22,6 +34,8 @@ function serialize(job) {
     file_formats: job.file_formats || null,
     output_dir: job.output_dir || null,
     output_credential_id: job.output_credential_id || null,
+    std_store_name: job.std_store_name || null,
+    std_header: parseStdHeader(job.std_header),
     csv_delimiter: job.csv_delimiter || ';',
     file_retention: job.file_retention || 'keep_all',
   };
@@ -50,8 +64,8 @@ function createJob(data) {
       item_type, op_mode, op_passthrough_field, send_empty_sync, batch_size, batch_concurrency,
       created_at, updated_at, row_filter_enabled, row_filter_expression,
       destination_mode, file_formats, output_dir, csv_delimiter, file_retention, example_schema_api_id,
-      output_credential_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      output_credential_id, std_store_name, std_header)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, data.name, data.description || null,
     data.connection_id, data.table_or_view, data.key_field,
@@ -73,7 +87,9 @@ function createJob(data) {
     data.csv_delimiter || ';',
     data.file_retention || 'keep_all',
     data.example_schema_api_id || null,
-    data.output_credential_id || null
+    data.output_credential_id || null,
+    data.std_store_name || null,
+    data.std_header ? JSON.stringify(data.std_header) : null
   );
   return getJob(id);
 }
@@ -90,12 +106,16 @@ function updateJob(id, data) {
     'sync_mode', 'date_field', 'api_config_id', 'schedule_type', 'schedule_value',
     'item_type', 'op_mode', 'op_passthrough_field',
     'destination_mode', 'file_formats', 'output_dir', 'csv_delimiter', 'file_retention',
-    'example_schema_api_id', 'output_credential_id'];
+    'example_schema_api_id', 'output_credential_id', 'std_store_name', 'std_header'];
   const fields = {};
   for (const key of allowed) {
     if (data[key] !== undefined) fields[key] = data[key];
   }
   if (fields.output_credential_id === '') fields.output_credential_id = null;
+  if (fields.std_header !== undefined) fields.std_header = fields.std_header ? JSON.stringify(fields.std_header) : null;
+  // Reglas del almacén .STD sobre el estado efectivo (lo enviado + lo guardado)
+  const issues = stdConfigIssues({ ...existing, ...fields });
+  if (issues.length > 0) throw new AppError(issues[0].message, 'VALIDATION_ERROR', 400);
   // Estado efectivo (lo enviado + lo guardado): una credencial solo con carpeta de salida UNC
   assertAssignable(
     fields.output_credential_id !== undefined ? fields.output_credential_id : existing.output_credential_id,

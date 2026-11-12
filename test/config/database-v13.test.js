@@ -26,15 +26,15 @@ test('migración v13 añade las columnas de credencial a jobs y connections', ()
   assert.ok(columns('connections').includes('network_credential_id'));
 });
 
-test('db_version = nº de migraciones (13)', () => {
+test('db_version = nº de migraciones (14)', () => {
   const row = getDb().prepare("SELECT value FROM app_settings WHERE key = 'db_version'").get();
-  assert.equal(row.value, '13');
+  assert.equal(row.value, '14');
 });
 
 test('initDatabase es idempotente', () => {
   assert.doesNotThrow(() => initDatabase());
   const row = getDb().prepare("SELECT value FROM app_settings WHERE key = 'db_version'").get();
-  assert.equal(row.value, '13');
+  assert.equal(row.value, '14');
 });
 
 test('name de credencial duplicado ⇒ violación UNIQUE', () => {

@@ -3,7 +3,7 @@
 const { z } = require('zod');
 const {
   AUTH_TYPES, SYNC_MODES, SCHEDULE_TYPES, HTTP_METHODS, TRANSFORMS, OP_MODES, ITEM_TYPES,
-  DESTINATION_MODES, FILE_RETENTION,
+  DESTINATION_MODES, FILE_RETENTION, FILE_FORMATS,
 } = require('../config/constants');
 const { isUncPath } = require('../core/files/paths');
 
@@ -124,6 +124,32 @@ const fieldMapEntrySchema = z.object({
   sort_order: z.number().int().default(0),
 });
 
+const oneLine = z.string().max(200).regex(/^[^\r\n]*$/, 'Sin saltos de línea').optional().nullable();
+
+const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+
+/** Nombre de fichero válido en Windows (sin extensión), para el nombre del almacén .STD. */
+function isValidWindowsFileName(name) {
+  const value = String(name || '');
+  return value.length > 0 && value.length <= 150 && !/[\\/:*?"<>|\x00-\x1f]/.test(value)
+    && !/[. ]$/.test(value) && !WINDOWS_RESERVED_NAMES.test(value);
+}
+
+/** Reglas del almacén .STD sobre un job completo (alta o job ya fusionado en una actualización). Devuelve mensajes. */
+function stdConfigIssues(job) {
+  const formats = String(job.file_formats || '').split(',').map(f => f.trim().toLowerCase()).filter(Boolean);
+  const issues = [];
+  const unknown = formats.filter(f => !Object.values(FILE_FORMATS).includes(f));
+  if (unknown.length) issues.push({ path: 'file_formats', message: `Formato no soportado: ${unknown.join(', ')}` });
+  if (formats.includes(FILE_FORMATS.ARDIS_STD)) {
+    if (formats.length > 1) issues.push({ path: 'file_formats', message: 'El almacén Ardis (.STD) no se combina con CSV ni JSON en el mismo job' });
+    if (job.destination_mode !== DESTINATION_MODES.ENDPOINT && !isValidWindowsFileName(job.std_store_name)) {
+      issues.push({ path: 'std_store_name', message: 'Indica el nombre del almacén (.STD): sin \\ / : * ? " < > |, sin punto ni espacio final y distinto de CON, PRN, AUX, NUL, COM1-9 o LPT1-9' });
+    }
+  }
+  return issues;
+}
+
 const jobBaseSchema = z.object({
   name: z.string().min(1).max(200).trim(),
   description: z.string().max(1000).optional().nullable(),
@@ -136,7 +162,7 @@ const jobBaseSchema = z.object({
   schedule_type: z.enum(Object.values(SCHEDULE_TYPES)),
   schedule_value: z.string().min(1).max(200),
   is_active: z.boolean().default(false),
-  item_type: z.enum(Object.values(ITEM_TYPES)),
+  item_type: z.enum(Object.values(ITEM_TYPES)).optional().nullable(),
   op_mode: z.enum(Object.values(OP_MODES)).default('snapshot'),
   op_passthrough_field: z.string().max(200).optional().nullable(),
   send_empty_sync: z.boolean().default(false),
@@ -151,6 +177,8 @@ const jobBaseSchema = z.object({
   file_retention: z.enum(Object.values(FILE_RETENTION)).default('keep_all'),
   example_schema_api_id: uuidSchema.optional().nullable(),
   output_credential_id: uuidSchema.optional().nullable(),
+  std_store_name: z.string().trim().max(150).optional().nullable(),
+  std_header: z.object({ REST: oneLine, ALGMACH: oneLine }).strict().optional().nullable(),
 });
 
 function passthroughRefine(data) {
@@ -170,13 +198,19 @@ function destinationSuperRefine(data, ctx) {
   if (mode !== DESTINATION_MODES.FILE && !data.api_config_id) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'api_config_id es requerido cuando destination_mode es "endpoint" o "both"', path: ['api_config_id'] });
   }
+  if (mode !== DESTINATION_MODES.FILE && !data.item_type) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'item_type es requerido cuando destination_mode es "endpoint" o "both"', path: ['item_type'] });
+  }
   if (mode !== DESTINATION_MODES.ENDPOINT) {
     if (!data.output_dir) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'output_dir es requerido cuando destination_mode incluye archivo', path: ['output_dir'] });
     }
     const formats = String(data.file_formats || '').split(',').map(f => f.trim()).filter(Boolean);
     if (formats.length === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'file_formats es requerido (csv, json, o ambos) cuando destination_mode incluye archivo', path: ['file_formats'] });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'file_formats es requerido (csv, json o ardis_std) cuando destination_mode incluye archivo', path: ['file_formats'] });
+    }
+    for (const issue of stdConfigIssues(data)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: [issue.path] });
     }
   }
 }
@@ -247,6 +281,8 @@ function validate(schema, data) {
 
 module.exports = {
   validate,
+  isValidWindowsFileName,
+  stdConfigIssues,
   loginSchema,
   firstRunSchema,
   createUserSchema,

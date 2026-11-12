@@ -494,6 +494,13 @@ function runMigrations(db) {
       addColIfNotExists('jobs', 'output_credential_id', 'TEXT REFERENCES network_credentials(id) ON DELETE RESTRICT');
       addColIfNotExists('connections', 'network_credential_id', 'TEXT REFERENCES network_credentials(id) ON DELETE RESTRICT');
     },
+
+    // v14: almacén Ardis .STD en la salida a fichero de los jobs
+    () => {
+      const cols = db.prepare('PRAGMA table_info(jobs)').all();
+      if (!cols.find(c => c.name === 'std_store_name')) db.prepare('ALTER TABLE jobs ADD COLUMN std_store_name TEXT').run();
+      if (!cols.find(c => c.name === 'std_header')) db.prepare('ALTER TABLE jobs ADD COLUMN std_header TEXT').run();
+    },
   ];
 
   for (let v = currentVersion; v < migrations.length; v++) {

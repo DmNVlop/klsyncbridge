@@ -29,7 +29,7 @@ test('índice único por automatización y clave de archivo', () => {
   assert.ok(unique && unique.unique === 1);
 });
 
-test('db_version = 13', () => {
+test('db_version = 14', () => {
   const row = getDb().prepare("SELECT value FROM app_settings WHERE key = 'db_version'").get();
-  assert.equal(row.value, '13');
+  assert.equal(row.value, '14');
 });
