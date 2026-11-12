@@ -70,23 +70,33 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Deja el servicio en RUNNING: lo arranca si está parado (hasta `maxStartAttempts` veces) y espera a que llegue.
- * Lanza un error en español si no está instalado, si se agotan los intentos o si pasa `timeoutMs`.
+ * Si aún no está registrado, espera hasta `registrationTimeoutMs`: node-windows, con permisos de administrador,
+ * lanza `winsw install` con `elevate` (asíncrono) y emite `install` antes de que el SCM lo tenga registrado.
+ * Lanza un error en español si no llega a registrarse, si se agotan los intentos o si pasa `timeoutMs`.
  */
 async function ensureServiceRunning(id = SERVICE_ID, {
   timeoutMs = 60000,
   pollMs = 1000,
   maxStartAttempts = 3,
+  registrationTimeoutMs = 30000,
   query = (serviceId) => queryServiceState(serviceId),
   start = (serviceId) => startService(serviceId),
   sleep = defaultSleep,
 } = {}) {
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
   let attempts = 0;
   let last = {};
 
   while (Date.now() < deadline) {
     last = query(id);
-    if (!last.installed) throw new Error(`El servicio ${id} no está instalado en Windows`);
+    if (!last.installed) {
+      if (Date.now() - startedAt >= registrationTimeoutMs) {
+        throw new Error(`El servicio ${id} no está instalado en Windows (no apareció en ${Math.round(registrationTimeoutMs / 1000)} s)`);
+      }
+      await sleep(pollMs);
+      continue;
+    }
 
     if (last.state === 'RUNNING') return last.state;
 

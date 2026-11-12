@@ -117,7 +117,17 @@ test('ensureServiceRunning: agota el tiempo con mensaje claro', async () => {
   );
 });
 
-test('ensureServiceRunning: servicio no instalado lanza error', async () => {
+test('ensureServiceRunning: servicio que nunca llega a registrarse lanza error tras registrationTimeoutMs', async () => {
   const f = fakes([{ installed: false }]);
-  await assert.rejects(ensureServiceRunning('a', f.deps), /no está instalado/);
+  await assert.rejects(
+    ensureServiceRunning('a', { ...f.deps, registrationTimeoutMs: 20, sleep: () => new Promise((r) => setTimeout(r, 5)) }),
+    /no está instalado en Windows \(no apareció en 0 s\)/,
+  );
+  assert.equal(f.calls.starts, 0);
+});
+
+test('ensureServiceRunning: espera a que el SCM registre el servicio (install asíncrono de node-windows)', async () => {
+  const f = fakes([{ installed: false }, { installed: false }, stopped, running]);
+  assert.equal(await ensureServiceRunning('a', f.deps), 'RUNNING');
+  assert.equal(f.calls.starts, 1);
 });
