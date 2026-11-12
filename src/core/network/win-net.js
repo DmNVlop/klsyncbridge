@@ -17,8 +17,18 @@ const { NetworkAccessError } = require('./net-errors');
 const RESOURCETYPE_DISK = 1;
 const UNAVAILABLE_MESSAGE = 'Conexión con credenciales no disponible en este equipo';
 
-/** Loader real: enlaza las dos funciones de mpr.dll con koffi (firmas verificadas con koffi 3.3.4). */
+/**
+ * Loader real: enlaza las dos funciones de mpr.dll con koffi (firmas verificadas con koffi 3.3.4).
+ * Los tipos de koffi son globales al proceso (un segundo `koffi.struct('NETRESOURCEW')` lanza
+ * «Duplicate type name»), así que el enlace se hace una sola vez y se comparte entre instancias.
+ */
+let processBinding = null;
 function koffiLoader() {
+  if (!processBinding) processBinding = bindMpr();
+  return processBinding;
+}
+
+function bindMpr() {
   const koffi = require('koffi');
   const mpr = koffi.load('mpr.dll');
   koffi.struct('NETRESOURCEW', {

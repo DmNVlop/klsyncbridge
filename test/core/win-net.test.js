@@ -60,3 +60,10 @@ test('la carga es perezosa y se hace una sola vez', () => {
   winNet.connect({ root: 'r', username: 'u', password: 'p' });
   assert.equal(loads, 1);
 });
+
+test('varias instancias con el loader real comparten el enlace de koffi (sin «Duplicate type name»)', { skip: process.platform !== 'win32' }, () => {
+  const first = createWinNet();
+  const second = createWinNet();
+  assert.equal(first.isAvailable(), true);
+  assert.equal(second.isAvailable(), true);
+});
