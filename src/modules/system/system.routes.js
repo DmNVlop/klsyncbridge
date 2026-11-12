@@ -38,12 +38,21 @@ router.use(requireMaster);
 const ROOT = path.join(__dirname, '../../../');
 
 // GET /api/system/privilege
-// Verifica si el proceso corre con privilegios de Administrador de Windows
+// Verifica si el proceso corre con privilegios de Administrador de Windows.
+// La cuenta sale de os.userInfo() (la misma que «Cuenta del servicio»): como LocalSystem, USERNAME es
+// la cuenta de equipo (p. ej. «SERVIDOR$»), que no dice nada al usuario.
 router.get('/privilege', (req, res) => {
   execFile('net', ['session'], { timeout: 4000 }, (err) => {
     const isAdmin = !err;
-    const username = process.env.USERNAME || process.env.USER || 'desconocido';
-    return success(res, { isAdmin, username });
+    let username;
+    try {
+      username = os.userInfo().username;
+    } catch (infoErr) {
+      logger.warn('System: no se pudo leer la cuenta del proceso', { error: infoErr.message });
+      username = process.env.USERNAME || process.env.USER || 'desconocido';
+    }
+    const isSystemAccount = /^SYSTEM$/i.test(username) || /\$$/.test(username);
+    return success(res, { isAdmin, username, isSystemAccount });
   });
 });
 

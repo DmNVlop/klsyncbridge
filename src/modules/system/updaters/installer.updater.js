@@ -39,8 +39,30 @@ function buildSetupCommand(setupPath, logPath) {
   return `start "" "${setupPath}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG="${logPath}"`;
 }
 
-async function download(url, filePath) {
+/** Bytes en MB con una cifra decimal y coma (p. ej. «35,5 MB»). */
+function formatMb(bytes) {
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
+}
+
+/**
+ * Siguiente tramo de progreso a informar (múltiplo de `stepPct`), o null si no se ha cruzado ninguno nuevo
+ * o si no se conoce el tamaño total.
+ */
+function nextProgressStep(received, total, lastStep, stepPct = 10) {
+  if (!total || total <= 0) return null;
+  const pct = Math.min(100, Math.floor((received / total) * 100));
+  const step = pct - (pct % stepPct);
+  return step > lastStep ? step : null;
+}
+
+async function download(url, filePath, onProgress = () => {}) {
   const response = await axios.get(url, { responseType: 'stream', timeout: 120000, maxRedirects: 5 });
+  const total = Number(response.headers?.['content-length']) || 0;
+  let received = 0;
+  response.data.on('data', (chunk) => {
+    received += chunk.length;
+    onProgress(received, total);
+  });
   await new Promise((resolve, reject) => {
     const out = fs.createWriteStream(filePath);
     response.data.pipe(out);
@@ -63,13 +85,25 @@ async function downloadVerifiedSetup(manifest, { log }) {
   const setupPath = path.join(updatesDir, `KLSyncBridge-Setup-${manifest.version}.exe`);
 
   log(`▶ Descargando v${manifest.version}...`);
-  await download(manifest.setupUrl, setupPath);
+  const startedAt = Date.now();
+  let lastStep = 0;
+  let size = 0;
+  // La UI lee estas líneas («Descargando … N %») para pintar el progreso de la fase de descarga.
+  await download(manifest.setupUrl, setupPath, (received, total) => {
+    size = received;
+    const step = nextProgressStep(received, total, lastStep);
+    if (step === null) return;
+    lastStep = step;
+    log(`▶ Descargando v${manifest.version}... ${step} % (${formatMb(received)} de ${formatMb(total)})`);
+  });
   const actual = await sha256File(setupPath);
   if (actual !== manifest.sha256) {
     fs.rmSync(setupPath, { force: true });
     throw new Error('La descarga no coincide con el sha256 publicado; se ha descartado');
   }
-  log('✅ Descarga verificada');
+  const seconds = Math.round((Date.now() - startedAt) / 1000);
+  logger.info('System: Setup descargado y verificado', { version: manifest.version, bytes: size, seconds });
+  log(`✅ Descarga verificada (${formatMb(size)} en ${seconds} s)`);
   return setupPath;
 }
 
@@ -146,5 +180,5 @@ async function runInstallerMigration({ res, log, localVersion, username }) {
 
 module.exports = {
   runInstallerUpdate, runInstallerMigration, fetchInstallerManifest, downloadVerifiedSetup, launchSetupDetached,
-  assertMigrationVersion, sha256File, buildSetupCommand, assertManifest,
+  assertMigrationVersion, sha256File, buildSetupCommand, assertManifest, formatMb, nextProgressStep,
 };

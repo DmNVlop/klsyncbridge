@@ -8,7 +8,22 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { sha256File, buildSetupCommand, assertManifest } = require('../../src/modules/system/updaters/installer.updater');
+const { sha256File, buildSetupCommand, assertManifest, formatMb, nextProgressStep } = require('../../src/modules/system/updaters/installer.updater');
+
+test('formatMb muestra MB con una cifra decimal y coma', () => {
+  assert.equal(formatMb(0), '0,0 MB');
+  assert.equal(formatMb(35.5 * 1024 * 1024), '35,5 MB');
+});
+
+test('nextProgressStep informa cada 10 % una sola vez y nada sin tamaño total', () => {
+  assert.equal(nextProgressStep(5, 100, 0), null);
+  assert.equal(nextProgressStep(10, 100, 0), 10);
+  assert.equal(nextProgressStep(19, 100, 10), null);
+  assert.equal(nextProgressStep(47, 100, 10), 40);
+  assert.equal(nextProgressStep(100, 100, 90), 100);
+  assert.equal(nextProgressStep(150, 100, 100), null);
+  assert.equal(nextProgressStep(50, 0, 0), null);
+});
 
 test('sha256File calcula el hash del fichero', async () => {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'klsb-sha-')), 'a.bin');

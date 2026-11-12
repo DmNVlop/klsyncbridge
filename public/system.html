@@ -157,9 +157,10 @@
               <span id="_update_section_dot" class="hidden w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" title="Actualización pendiente"></span>
             </div>
             <p class="text-xs text-slate-500 mt-0.5">Versión actual: <span id="current-version" class="font-mono text-slate-300">—</span></p>
+            <p id="update-last-summary" class="hidden text-xs text-emerald-400/80 mt-0.5 font-mono"></p>
           </div>
         </div>
-        <button onclick="checkUpdate()" id="btn-check-update" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white text-xs transition-colors">
+        <button onclick="checkUpdate()" id="btn-check-update" title="Consulta en GitHub si hay una versión de KLSyncBridge más reciente que la instalada" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white text-xs transition-colors">
           Buscar actualización
         </button>
       </div>
@@ -189,7 +190,7 @@
           <span id="release-date" class="text-xs text-slate-500"></span>
         </div>
         <pre id="changelog-text" class="text-xs text-slate-400 font-mono bg-base rounded-lg p-3 border border-white/5 whitespace-pre-wrap mb-4 leading-relaxed"></pre>
-        <button onclick="runUpdate()" id="btn-run-update" class="px-4 py-2 bg-emerald-800 hover:bg-emerald-700 border border-emerald-500/30 text-emerald-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+        <button onclick="runUpdate()" id="btn-run-update" title="Descarga la versión nueva, la instala y reinicia el servicio; verás cada fase y cuánto tarda" class="px-4 py-2 bg-emerald-800 hover:bg-emerald-700 border border-emerald-500/30 text-emerald-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
           Actualizar ahora
         </button>
         <p class="text-xs text-slate-500 mt-2">
@@ -204,6 +205,12 @@
           <span class="text-sm text-blue-400 font-medium">Actualizando...</span>
         </div>
         <pre id="update-log" class="text-xs font-mono text-slate-300 bg-base rounded-lg p-4 border border-white/5 max-h-56 overflow-y-auto whitespace-pre-wrap leading-relaxed"></pre>
+      </div>
+
+      <!-- Fases de la actualización (visibles en «en progreso» y «reiniciando») -->
+      <div id="update-phases" class="hidden mb-4">
+        <ol id="update-phase-list" class="space-y-2"></ol>
+        <p id="update-phase-total" class="text-xs text-slate-500 mt-3 font-mono"></p>
       </div>
 
       <!-- Pasar al instalador (solo instalaciones antiguas) -->
@@ -223,9 +230,9 @@
       <div id="update-restarting" class="hidden">
         <div class="flex items-center gap-2 mb-2">
           <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-          <span class="text-sm text-emerald-400 font-medium">Reiniciando servicio...</span>
+          <span class="text-sm text-emerald-400 font-medium">Instalando la versión nueva...</span>
         </div>
-        <p class="text-xs text-slate-500">La página se recargará automáticamente en cuanto el servidor responda.</p>
+        <p class="text-xs text-slate-500">La página se recargará automáticamente en cuanto el servicio vuelva.</p>
       </div>
     </div>
 
@@ -253,6 +260,7 @@
       loadPrivilege();
       loadNetwork();
       loadUpdateSection();
+      showLastUpdateSummary();
       loadMigrationSection();
     }
 
@@ -306,7 +314,9 @@
       if (data.isAdmin) {
         dot.className  = 'w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0';
         text.className = 'text-xs text-emerald-400 font-mono';
-        text.textContent = `Privilegios elevados — corriendo como Administrador (${data.username})`;
+        text.textContent = data.isSystemAccount
+          ? `Privilegios elevados — cuenta del sistema (${data.username})`
+          : `Privilegios elevados — usuario administrador (${data.username})`;
       } else {
         dot.className  = 'w-2 h-2 rounded-full bg-red-500 flex-shrink-0';
         text.className = 'text-xs text-red-400 font-mono';
@@ -462,6 +472,117 @@
       ['update-idle','update-checking','update-ok','update-available','update-progress','update-restarting']
         .forEach(id => document.getElementById(id).classList.add('hidden'));
       document.getElementById('update-' + state).classList.remove('hidden');
+      document.getElementById('update-phases').classList.toggle('hidden', !['progress', 'restarting'].includes(state));
+    }
+
+    // ── Fases de la actualización ─────────────────────────────────────────────
+    // Descargar (lo informa el servidor en streaming) ⇒ detener el servicio (/api/health aún responde con la
+    // versión anterior) ⇒ instalar y arrancar (/api/health no responde) ⇒ listo (vuelve con la versión nueva).
+    const UPDATE_PHASES = [
+      { key: 'download', label: 'Descargar y preparar' },
+      { key: 'stop',     label: 'Detener el servicio' },
+      { key: 'install',  label: 'Instalar y arrancar el servicio' },
+    ];
+    const LAST_UPDATE_SUMMARY_KEY = 'klsb_last_update_summary';
+    let phaseState = null;
+    let phaseTicker = null;
+
+    function formatSeconds(ms) {
+      return `${Math.max(0, Math.round(ms / 1000))} s`;
+    }
+
+    function startPhases() {
+      phaseState = { startedAt: Date.now(), current: null, phaseStartedAt: 0, durations: {}, details: {}, progress: null };
+      startPhase('download');
+      clearInterval(phaseTicker);
+      phaseTicker = setInterval(renderPhases, 1000);
+    }
+
+    function startPhase(key) {
+      if (!phaseState || phaseState.current === key || key in phaseState.durations) return;
+      const now = Date.now();
+      if (phaseState.current) phaseState.durations[phaseState.current] = now - phaseState.phaseStartedAt;
+      // Una fase saltada (p. ej. el servicio no llegó a verse parado) queda hecha con 0 s.
+      const order = UPDATE_PHASES.map(p => p.key);
+      for (const p of order.slice(0, order.indexOf(key))) {
+        if (!(p in phaseState.durations)) phaseState.durations[p] = 0;
+      }
+      phaseState.current = key;
+      phaseState.phaseStartedAt = now;
+      renderPhases();
+    }
+
+    function setDownloadProgress(pct, sizes) {
+      if (!phaseState) return;
+      phaseState.progress = pct;
+      phaseState.details.download = `${pct} % (${sizes})`;
+      renderPhases();
+    }
+
+    /** Cierra la fase en curso y devuelve el resumen de tiempos. */
+    function finishPhases() {
+      if (!phaseState) return null;
+      const now = Date.now();
+      if (phaseState.current) phaseState.durations[phaseState.current] = now - phaseState.phaseStartedAt;
+      for (const p of UPDATE_PHASES) if (!(p.key in phaseState.durations)) phaseState.durations[p.key] = 0;
+      phaseState.current = null;
+      clearInterval(phaseTicker);
+      renderPhases();
+      const parts = UPDATE_PHASES.map(p => `${p.label.toLowerCase()} ${formatSeconds(phaseState.durations[p.key])}`);
+      return { total: formatSeconds(now - phaseState.startedAt), parts: parts.join(' · ') };
+    }
+
+    function stopPhases() {
+      clearInterval(phaseTicker);
+      phaseState = null;
+    }
+
+    function renderPhases() {
+      if (!phaseState) return;
+      const list = document.getElementById('update-phase-list');
+      list.innerHTML = '';
+      const now = Date.now();
+      for (const phase of UPDATE_PHASES) {
+        const done = phase.key in phaseState.durations;
+        const active = phaseState.current === phase.key;
+        const li = document.createElement('li');
+        li.className = 'flex items-center gap-3 text-sm';
+        const icon = document.createElement('span');
+        icon.className = done ? 'w-4 text-center text-emerald-400' : active ? 'w-4 flex justify-center' : 'w-4 text-center text-slate-600';
+        if (active) icon.innerHTML = '<span class="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>';
+        else icon.textContent = done ? '✓' : '○';
+        const label = document.createElement('span');
+        label.className = done ? 'text-slate-300' : active ? 'text-blue-300 font-medium' : 'text-slate-500';
+        label.textContent = phase.label;
+        const detail = document.createElement('span');
+        detail.className = 'ml-auto text-xs font-mono text-slate-500';
+        if (done) detail.textContent = formatSeconds(phaseState.durations[phase.key]);
+        else if (active) {
+          const extra = phaseState.details[phase.key] ? `${phaseState.details[phase.key]} · ` : '';
+          detail.textContent = extra + formatSeconds(now - phaseState.phaseStartedAt);
+        }
+        li.append(icon, label, detail);
+        list.appendChild(li);
+        if (phase.key === 'download' && active && phaseState.progress !== null) {
+          const bar = document.createElement('li');
+          bar.className = 'ml-7 h-1 rounded-full bg-white/5 overflow-hidden';
+          bar.innerHTML = `<div class="h-full bg-blue-400/70 transition-all" style="width:${phaseState.progress}%"></div>`;
+          list.appendChild(bar);
+        }
+      }
+      document.getElementById('update-phase-total').textContent = `Tiempo total: ${formatSeconds(now - phaseState.startedAt)}`;
+    }
+
+    function saveLastUpdateSummary(text) {
+      try { sessionStorage.setItem(LAST_UPDATE_SUMMARY_KEY, text); } catch { /* sin almacenamiento: solo se pierde el resumen */ }
+    }
+
+    function showLastUpdateSummary() {
+      let text = null;
+      try { text = sessionStorage.getItem(LAST_UPDATE_SUMMARY_KEY); } catch { text = null; }
+      const el = document.getElementById('update-last-summary');
+      el.textContent = text ? `Última actualización: ${text}` : '';
+      el.classList.toggle('hidden', !text);
     }
 
     // Versión instalada (siempre, sin internet) + último resultado de la comprobación periódica del servidor
@@ -553,6 +674,9 @@
           const chunk = decoder.decode(value, { stream: true });
           updateLog.textContent += chunk;
           updateLog.scrollTop = updateLog.scrollHeight;
+          // Línea del servidor: «▶ Descargando vX... 40 % (14,2 MB de 35,5 MB)»
+          const progress = [...chunk.matchAll(/Descargando[^\n]*?(\d+) % \(([^)\n]+)\)/g)].pop();
+          if (progress) setDownloadProgress(Number(progress[1]), progress[2]);
           if (chunk.includes('Actualizaci') && chunk.includes('completada')) finished = true;
         }
       } catch (e) {
@@ -574,13 +698,16 @@
       document.getElementById('btn-run-migration').disabled = true;
       const updateLog = document.getElementById('update-log');
       updateLog.textContent = '';
+      startPhases();
 
       const finished = await streamUpdate('/api/system/migrate-to-installer', updateLog);
       if (finished) {
         UI.clearUpdateIndicators();
+        startPhase('stop');
         showUpdateState('restarting');
         waitForRestart(body => body.data.updateMode === 'installer', 'instalador', 'migration');
       } else {
+        stopPhases();
         document.getElementById('btn-check-update').disabled = false;
         loadMigrationSection();
       }
@@ -600,15 +727,18 @@
 
       const updateLog = document.getElementById('update-log');
       updateLog.textContent = '';
+      startPhases();
 
       const previousVersion = document.getElementById('current-version').textContent.trim();
       const finished = await streamUpdate('/api/system/update', updateLog);
 
       if (finished) {
         UI.clearUpdateIndicators();
+        startPhase('stop');
         showUpdateState('restarting');
         waitForRestart(body => body.data.version !== previousVersion, 'versión nueva', 'update');
       } else {
+        stopPhases();
         document.getElementById('btn-check-update').disabled = false;
         document.getElementById('btn-run-update').disabled = false;
       }
@@ -631,13 +761,18 @@
             const body = await res.json();
             if (isBack(body)) {
               clearInterval(interval);
-              UI.toast(kind === 'migration' ? `Ahora usa el instalador (v${body.data.version})` : `Actualizado a v${body.data.version}`, 'success');
+              const summary = finishPhases();
+              const what = kind === 'migration' ? `Pasado al instalador (v${body.data.version})` : `Actualizado a v${body.data.version}`;
+              const text = summary ? `${what} en ${summary.total}: ${summary.parts}` : what;
+              saveLastUpdateSummary(text);
+              UI.toast(text, 'success');
               setTimeout(() => window.location.reload(), 1500);
               return;
             }
             // Migración: si el servicio cae y vuelve en modo antiguo, el Setup falló y se restauró el anterior.
             if (kind === 'migration' && wasDown) {
               clearInterval(interval);
+              stopPhases();
               showUpdateState('idle');
               UI.toast('No se pudo pasar al instalador; se ha restaurado la instalación anterior. Revisa C:\\ProgramData\\KLSyncBridge\\logs (setup-migration-*.log, installer-setup.log y legacy-rollback.log).', 'error');
               loadStatus();
@@ -649,9 +784,11 @@
         } catch {
           // servicio parado mientras se instala: seguir esperando
           wasDown = true;
+          startPhase('install');
         }
         if (Date.now() - startedAt >= maxWaitMs) {
           clearInterval(interval);
+          stopPhases();
           showUpdateState('idle');
           if (kind === 'migration') {
             UI.toast('El servicio no ha vuelto con el instalador en 5 minutos. Revisa C:\\ProgramData\\KLSyncBridge\\logs (setup-migration-*.log, installer-setup.log y legacy-rollback.log).', 'error');
