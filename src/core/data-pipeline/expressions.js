@@ -30,4 +30,21 @@ function matchesFilter(record, filterExpression, logMeta = {}) {
   }
 }
 
-module.exports = { evaluateExpression, matchesFilter };
+/**
+ * Comprueba que una expresión de campo o de filtro compila, SIN ejecutarla (solo sintaxis).
+ * @param {string} expression
+ * @param {'field'|'filter'} kind
+ * @returns {string|null} mensaje del error de sintaxis, o null si es válida
+ */
+function checkExpressionSyntax(expression, kind = 'field') {
+  try {
+    // Construir la función no ejecuta su cuerpo: solo valida la sintaxis
+    // eslint-disable-next-line no-new-func
+    new Function(`"use strict"; return ${kind === 'filter' ? '!!' : ''}(${expression});`);
+    return null;
+  } catch (err) {
+    return err.message;
+  }
+}
+
+module.exports = { evaluateExpression, matchesFilter, checkExpressionSyntax };
