@@ -2,10 +2,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { resolveConfiguredPath } = require('../core/files/paths');
-const { AppError } = require('../utils/errors');
-const { FILE_FORMATS } = require('../config/constants');
-const logger = require('./logger.service');
+const { resolveConfiguredPath } = require('../files/paths');
+const { AppError } = require('../../utils/errors');
+const { FILE_FORMATS } = require('../../config/constants');
+const logger = require('../../services/logger.service');
 
 const CSV_BOM = '﻿';
 
@@ -17,15 +17,6 @@ function buildTimestamp() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
-}
-
-function parseFormats(fileFormatsStr) {
-  const raw = String(fileFormatsStr || FILE_FORMATS.CSV)
-    .split(',')
-    .map(f => f.trim().toLowerCase())
-    .filter(Boolean);
-  const formats = raw.filter(f => f === FILE_FORMATS.CSV || f === FILE_FORMATS.JSON);
-  return formats.length > 0 ? formats : [FILE_FORMATS.CSV];
 }
 
 function getNestedValue(obj, dotPath) {
@@ -126,47 +117,33 @@ function cleanupOldFiles(outputDir, baseName, keepPaths) {
   }
 }
 
-/**
- * Exporta items ya mapeados (mismo shape que usa el bloque HTTP del executor) a CSV/JSON en disco.
- * items: array de { payload, ... } — se usa item.payload, mismo dato ya construido por buildPayload/diffWithSnapshot.
- */
-async function exportItemsToFiles({ items, fieldMaps, job }) {
-  if (!job.output_dir) {
+/** Salida CSV/JSON a carpeta. config.formats llega ya como array (lo normaliza el registro de salidas). */
+async function write({ items, config }) {
+  if (!config.outputDir) {
     throw new AppError('output_dir no configurado para exportación a archivo', 'INVALID_PATH', 400);
   }
+  const outputDir = resolveConfiguredPath(config.outputDir);
+  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-  const outputDir = resolveConfiguredPath(job.output_dir);
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
-
-  const baseName = sanitizeBaseName(job.table_or_view);
+  const baseName = sanitizeBaseName(config.baseName);
   const timestamp = buildTimestamp();
-  const formats = parseFormats(job.file_formats);
-  const delimiter = job.csv_delimiter || ';';
-  const headers = fieldMaps.map(f => f.api_field);
-
+  const formats = config.formats;
   const filePaths = [];
 
   if (formats.includes(FILE_FORMATS.CSV)) {
     const csvPath = path.join(outputDir, `${baseName}_${timestamp}.csv`);
-    await writeCsvFile({ finalPath: csvPath, items, headers, delimiter });
+    await writeCsvFile({ finalPath: csvPath, items, headers: config.headers, delimiter: config.delimiter || ';' });
     filePaths.push(csvPath);
   }
-
   if (formats.includes(FILE_FORMATS.JSON)) {
     const jsonPath = path.join(outputDir, `${baseName}_${timestamp}.json`);
     await writeJsonFile({ finalPath: jsonPath, items });
     filePaths.push(jsonPath);
   }
+  if (config.retention === 'keep_last') cleanupOldFiles(outputDir, baseName, filePaths);
 
-  if (job.file_retention === 'keep_last') {
-    cleanupOldFiles(outputDir, baseName, filePaths);
-  }
-
-  logger.info(`Exportación a archivo completada para job "${job.name}"`, { job_id: job.id, filePaths });
-
-  return { status: 'success', filePaths };
+  logger.info(`Exportación a archivo completada para job "${config.jobName}"`, { job_id: config.jobId, filePaths });
+  return { status: 'success', filePaths, written: items.length, discardedCount: 0, unchanged: false, message: null };
 }
 
-module.exports = { exportItemsToFiles };
+module.exports = { type: 'file', formats: [FILE_FORMATS.CSV, FILE_FORMATS.JSON], fullSet: false, write };

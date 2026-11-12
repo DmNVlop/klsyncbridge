@@ -11,7 +11,7 @@ const {
 const { getSourceService } = require('../../services/sources/index');
 const { buildRequestAuth } = require('../../core/resources/api-config-resolver');
 const { requestWithRetry } = require('../../services/http.service');
-const { exportItemsToFiles } = require('../../services/file-export.service');
+const fileOutput = require('../../core/outputs/file.output');
 const { SYNC_MODES, OP_MODES, BATCH_DEFAULTS, DESTINATION_MODES } = require('../../config/constants');
 const { credentialAccess } = require('../credentials/credential-access.service');
 const logger = require('../../services/logger.service');
@@ -167,7 +167,19 @@ async function executeJob(jobId) {
           // Con credencial de red, conecta antes de escribir y reconecta una vez si la sesión cayó; sin ella, cuenta del servicio
           const fileResult = await credentialAccess.withFolderAccess(
             { path: job.output_dir, credentialId: job.output_credential_id },
-            () => exportItemsToFiles({ items: itemsToProcess, fieldMaps, job }),
+            () => fileOutput.write({
+              items: itemsToProcess,
+              config: {
+                outputDir: job.output_dir,
+                baseName: job.table_or_view,
+                formats: String(job.file_formats || 'csv').split(',').map(f => f.trim().toLowerCase()).filter(f => f === 'csv' || f === 'json'),
+                delimiter: job.csv_delimiter || ';',
+                retention: job.file_retention,
+                headers: fieldMaps.map(f => f.api_field),
+                jobName: job.name,
+                jobId: job.id,
+              },
+            }),
           );
           fileExportStatus = fileResult.status;
           fileExportPaths = JSON.stringify(fileResult.filePaths || []);
