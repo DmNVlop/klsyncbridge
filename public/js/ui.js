@@ -9,6 +9,7 @@ const NAV_LINKS = [
   { href: '/connections', label: 'Conexiones' },
   { href: '/api-configs', label: 'APIs' },
   { href: '/network-credentials', label: 'Credenciales de red' },
+  { href: '/mapping-templates', label: 'Plantillas de mapeo' },
   { href: '/logs',        label: 'Logs' },
   { href: '/users',       label: 'Usuarios' },
   { href: '/system',      label: 'Sistema' },

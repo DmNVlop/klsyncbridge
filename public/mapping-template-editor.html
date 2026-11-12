@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Editor de plantilla de mapeo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>
+    body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}
+    .inp{width:100%;padding:0.5rem 0.75rem;border-radius:0.5rem;background:#0f1117;border:1px solid rgba(255,255,255,0.1);color:white;font-size:0.875rem;outline:none}
+    .inp:focus{border-color:#3b82f6}
+    .inp option{background:#1a1d27}
+    .map-mode-btn{padding:0.25rem 0.6rem;border-radius:0.375rem;font-size:0.7rem;font-weight:600;border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:all 0.15s;white-space:nowrap}
+    .map-mode-btn.active-field{background:#1e3a5f;border-color:#3b82f6;color:#93c5fd}
+    .map-mode-btn.active-static{background:#1a3320;border-color:#22c55e;color:#86efac}
+    .map-mode-btn.active-expr{background:#3b1f47;border-color:#a855f7;color:#d8b4fe}
+    .map-mode-btn:not([class*="active"]){background:transparent;color:#64748b}
+    .expr-builder{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem}
+    .expr-builder select,.expr-builder input{padding:0.3rem 0.5rem;border-radius:0.375rem;background:#0f1117;border:1px solid rgba(255,255,255,0.1);color:white;font-size:0.75rem;min-width:0}
+    .expr-adv-toggle{font-size:0.7rem;color:#a855f7;cursor:pointer;text-decoration:underline;white-space:nowrap}
+    .expr-adv-toggle:hover{color:#c084fc}
+  </style>
+</head>
+<body>
+  <main class="max-w-[1360px] mx-auto px-6 py-8 space-y-6">
+    <div class="flex items-center justify-between">
+      <h1 id="page-title" class="text-2xl font-semibold text-white">Nueva plantilla de mapeo</h1>
+      <a href="/mapping-templates" title="Volver a la lista de plantillas sin guardar los cambios" class="text-sm text-slate-400 hover:text-white">← Volver a la lista</a>
+    </div>
+
+    <!-- Datos generales -->
+    <section class="bg-surface rounded-xl border border-white/5 p-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="t-name">Nombre</label>
+          <input id="t-name" type="text" class="inp" placeholder="Stock ERP a Ardis">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="t-kind">Destino</label>
+          <select id="t-kind" class="inp" title="API: cada fila sale como un objeto JSON. Ardis .STD: cada fila es un registro del almacén de Ardis">
+            <option value="api">API (objetos JSON)</option>
+            <option value="ardis_std">Almacén Ardis (.STD)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="t-desc">Descripción (opcional)</label>
+          <input id="t-desc" type="text" class="inp">
+        </div>
+      </div>
+    </section>
+
+    <!-- Fichero de ejemplo -->
+    <section class="bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-1">Fichero de ejemplo</h2>
+      <p class="text-xs text-slate-400 mb-4">Opcional pero recomendado: indica un fichero real (CSV o Excel) para detectar sus campos. Los campos detectados, con valores de ejemplo, alimentan los desplegables de origen, la vista previa y las instrucciones para la IA.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="s-path">Ruta del fichero (en este equipo o de red)</label>
+          <input id="s-path" type="text" class="inp font-mono" placeholder="C:\datos\stock.csv o \\servidor\recurso\stock.csv">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="s-cred">Credencial de red (solo si la ruta es de red)</label>
+          <select id="s-cred" class="inp" title="Cuenta de Windows para entrar en la carpeta de red"><option value="">Sin credencial</option></select>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <span class="text-xs text-slate-500">o bien</span>
+        <label class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 text-xs hover:bg-white/5 cursor-pointer" title="Elegir un fichero de tu equipo (máx. 5 MB); se envía al servidor solo para detectar campos y no se guarda">
+          Subir un fichero desde este navegador…
+          <input id="s-file" type="file" accept=".csv,.txt,.xlsx,.xls" class="hidden">
+        </label>
+        <span id="s-file-name" class="text-xs text-slate-400"></span>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="r-format">Formato</label>
+          <select id="r-format" class="inp"><option value="auto">Automático</option><option value="csv">CSV</option><option value="excel">Excel</option></select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="r-delim">Delimitador CSV</label>
+          <input id="r-delim" type="text" class="inp font-mono" maxlength="5" placeholder="auto" title="Vacío = se detecta entre ; , y tabulador">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="r-enc">Codificación</label>
+          <select id="r-enc" class="inp"><option value="">Por defecto (UTF-8)</option><option value="utf8">UTF-8</option><option value="latin1">Latin-1</option></select>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1" for="r-sheet">Hoja de Excel</label>
+          <input id="r-sheet" type="text" class="inp" placeholder="primera hoja">
+        </div>
+        <div class="flex items-end pb-2">
+          <label class="flex items-center gap-2 text-sm text-slate-300" title="Si no hay cabecera, los campos se llaman col1, col2…"><input id="r-header" type="checkbox" checked> Con cabecera</label>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="btn-detect" type="button" title="Leer el fichero indicado y detectar sus campos con valores de ejemplo" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Detectar campos</button>
+        <span id="detect-status" class="text-xs text-slate-400"></span>
+      </div>
+      <div id="detected" class="hidden mt-4"></div>
+    </section>
+
+    <!-- Mapeo -->
+    <section class="bg-surface rounded-xl border border-white/5 p-6">
+      <h2 class="font-medium text-white mb-3">Mapeo de campos</h2>
+      <datalist id="std-key-options"></datalist>
+      <div id="std-panel" class="hidden mb-5 bg-base rounded-lg border border-white/5 p-4 space-y-2">
+        <p class="text-xs font-medium text-slate-300">Campos del almacén Ardis (.STD)</p>
+        <p class="text-xs text-slate-400">Obligatorias: <span id="std-required-list"></span></p>
+        <ul class="text-xs text-slate-500 list-disc pl-5 space-y-0.5">
+          <li>Si no se mapean: NOLIMIT=1 (ilimitado) y AANT=0.</li>
+          <li>ID no se escribe: lo gestiona Ardis.</li>
+          <li>Las filas sin alguna obligatoria se descartan y se anotan en el registro de ejecución.</li>
+        </ul>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm mb-4">
+          <thead>
+            <tr class="border-b border-white/5">
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Campo destino</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Modo</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Fuente / Valor</th>
+              <th class="text-left py-2 px-2 text-slate-400 font-medium">Transform</th>
+              <th class="py-2 px-2"></th>
+            </tr>
+          </thead>
+          <tbody id="map-rows"></tbody>
+        </table>
+      </div>
+      <button id="btn-add-row" type="button" title="Añadir una fila vacía al mapeo para configurarla a mano" class="text-sm text-accent hover:text-blue-400">+ Añadir fila</button>
+
+      <div class="mt-6">
+        <label class="block text-xs font-medium text-slate-400 mb-1" for="t-filter">Filtro de filas (opcional)</label>
+        <textarea id="t-filter" rows="2" class="inp font-mono text-xs" placeholder='ESTADO == "ACTIVO" && STOCK > 0'></textarea>
+        <p class="text-xs text-slate-500 mt-1">Expresión que debe cumplir una fila para procesarse; las que no la cumplan se omiten. Los campos del origen se usan por su nombre exacto.</p>
+      </div>
+    </section>
+
+    <!-- Vista previa -->
+    <section class="bg-surface rounded-xl border border-white/5 p-6">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="font-medium text-white">Vista previa</h2>
+        <button id="btn-preview" type="button" title="Aplicar el mapeo y el filtro actuales al fichero de ejemplo y ver las 10 primeras salidas, sin escribir nada" class="px-4 py-2 rounded-lg border border-white/10 text-slate-200 text-sm hover:bg-white/5">Vista previa</button>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">Necesita un fichero de ejemplo (ruta o subido). No escribe ni envía nada.</p>
+      <div id="preview" class="text-sm text-slate-400">Sin vista previa todavía.</div>
+    </section>
+
+    <!-- Acciones -->
+    <div class="flex flex-wrap items-center gap-3 justify-between">
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btn-ai" type="button" title="Copiar al portapapeles unas instrucciones para pedir a una IA que genere el JSON del mapeo (incluyen los campos detectados)" class="px-3 py-2 rounded-lg border border-white/10 text-slate-300 text-sm hover:bg-white/5">Copiar instrucciones para la IA</button>
+        <button id="btn-import" type="button" title="Cargar un mapeo desde un JSON pegado o un fichero; se rellena el editor sin guardar" class="px-3 py-2 rounded-lg border border-white/10 text-slate-300 text-sm hover:bg-white/5">Importar JSON</button>
+        <button id="btn-export" type="button" title="Descargar el mapeo que hay ahora en el editor como fichero JSON" class="px-3 py-2 rounded-lg border border-white/10 text-slate-300 text-sm hover:bg-white/5">Exportar JSON</button>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="/mapping-templates" title="Volver a la lista sin guardar" class="px-4 py-2 rounded-lg border border-white/10 text-slate-300 text-sm">Cancelar</a>
+        <button id="btn-save" type="button" title="Guardar la plantilla de mapeo" class="px-5 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Guardar plantilla</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/mapping-editor.js"></script>
+  <script src="/js/mapping-tools.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    const esc = UI.escapeHtml;
+    const $ = (id) => document.getElementById(id);
+    const MAX_SAMPLE_BYTES = 5 * 1024 * 1024;
+
+    const params = new URLSearchParams(location.search);
+    let editingId = params.get('id');
+    let origin = { type: 'manual' };      // se conserva el de la plantilla al editarla
+    let detectedFields = [];               // [{ name, sampleValues }]
+    let uploaded = null;                   // { fileName, contentBase64 } del fichero subido desde el navegador
+    let stdKeysCatalog = null;
+
+    const mapEditor = MappingEditor.create({
+      tbody: $('map-rows'),
+      getSourceFields: () => detectedFields,
+      getTargetListId: () => (isStd() ? 'std-key-options' : ''),
+      freeSource: true,
+      preserveDefaults: true,
+      onChange: () => {},
+      onTargetChange: () => refreshStdHints(),
+    });
+
+    function isStd() { return $('t-kind').value === 'ardis_std'; }
+
+    function refreshStdHints() {
+      mapEditor.applyStdHints({
+        std: isStd(),
+        pattern: stdKeysCatalog ? new RegExp(stdKeysCatalog.keyPattern) : null,
+        requiredEl: $('std-required-list'),
+      });
+    }
+
+    async function applyKind() {
+      const std = isStd();
+      $('std-panel').classList.toggle('hidden', !std);
+      if (std && !stdKeysCatalog) {
+        try {
+          stdKeysCatalog = (await API.get('/jobs/std-keys')).data;
+        } catch (err) {
+          UI.toast('No se pudo cargar el catálogo de claves del almacén Ardis: ' + err.message, 'error');
+        }
+      }
+      if (std && stdKeysCatalog) {
+        $('std-key-options').innerHTML = stdKeysCatalog.recordKeys.map((k) => `<option value="${esc(k.key)}">${esc(k.key)} — ${esc(k.label)}</option>`).join('');
+        $('std-required-list').innerHTML = stdKeysCatalog.recordKeys.filter((k) => k.required)
+          .map((k) => `<span class="std-req font-mono" data-key="${esc(k.key)}">${esc(k.key)}</span>`).join(', ');
+      }
+      mapEditor.setTargetList(std ? 'std-key-options' : '');
+      refreshStdHints();
+    }
+
+    // ── Fichero de ejemplo ──────────────────────────────────────────────
+    function readerConfig() {
+      const options = {};
+      const delimiter = $('r-delim').value;
+      if (delimiter) options.delimiter = delimiter;
+      if ($('r-enc').value) options.encoding = $('r-enc').value;
+      if ($('r-sheet').value.trim()) options.sheet_name = $('r-sheet').value.trim();
+      options.has_header = $('r-header').checked;
+      return { format: $('r-format').value, options };
+    }
+
+    function applyReader(reader) {
+      if (!reader) return;
+      $('r-format').value = reader.format || 'auto';
+      const o = reader.options || {};
+      $('r-delim').value = o.delimiter || '';
+      $('r-enc').value = o.encoding || '';
+      $('r-sheet').value = o.sheet_name || '';
+      $('r-header').checked = o.has_header !== false;
+    }
+
+    // Cuerpo de /sample y /preview: fichero subido o ruta
+    function sampleBody() {
+      const reader = readerConfig();
+      if (uploaded) return { fileName: uploaded.fileName, contentBase64: uploaded.contentBase64, reader };
+      const path = $('s-path').value.trim();
+      if (!path) return null;
+      const body = { path, reader };
+      if ($('s-cred').value) body.credentialId = $('s-cred').value;
+      return body;
+    }
+
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      return btoa(binary);
+    }
+
+    $('s-file').addEventListener('change', (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      if (file.size > MAX_SAMPLE_BYTES) {
+        UI.toast('El fichero supera los 5 MB; usa la ruta del fichero o un extracto más pequeño', 'error');
+        event.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        uploaded = { fileName: file.name, contentBase64: arrayBufferToBase64(reader.result) };
+        $('s-file-name').textContent = `Fichero subido: ${file.name}`;
+        $('s-path').value = '';
+        detect();
+      };
+      reader.onerror = () => UI.toast('No se ha podido leer el fichero', 'error');
+      reader.readAsArrayBuffer(file);
+    });
+
+    // Escribir una ruta descarta el fichero subido (solo se usa una de las dos fuentes)
+    $('s-path').addEventListener('input', () => {
+      if (uploaded) { uploaded = null; $('s-file').value = ''; $('s-file-name').textContent = ''; }
+    });
+
+    function renderDetected() {
+      const box = $('detected');
+      if (!detectedFields.length) { box.classList.add('hidden'); return; }
+      box.classList.remove('hidden');
+      box.innerHTML = `
+        <p class="text-xs text-slate-400 mb-2">Campos detectados (${detectedFields.length}). Valores de ejemplo al pasar el ratón:</p>
+        <div class="flex flex-wrap gap-2">${detectedFields.map((f) => {
+          const values = (f.sampleValues || []).join(' | ');
+          return `<span class="px-2 py-1 rounded bg-base border border-white/10 text-xs font-mono text-slate-300" title="${esc(values ? 'Ejemplos: ' + values : 'Sin valores de ejemplo')}">${esc(f.name)}${values ? `<span class="text-slate-500"> · ${esc(values.slice(0, 40))}</span>` : ''}</span>`;
+        }).join('')}</div>`;
+    }
+
+    async function detect() {
+      const body = sampleBody();
+      if (!body) { UI.toast('Indica la ruta de un fichero de ejemplo o sube uno', 'error'); return; }
+      $('detect-status').textContent = 'Leyendo el fichero…';
+      $('btn-detect').disabled = true;
+      try {
+        const res = (await API.post('/mapping-templates/sample', body)).data;
+        detectedFields = res.fields || [];
+        renderDetected();
+        mapEditor.refreshSources();
+        const sheets = res.sheets && res.sheets.length ? ` Hojas: ${res.sheets.join(', ')}.` : '';
+        $('detect-status').textContent = `Formato ${res.format}: ${detectedFields.length} campos, ${res.rows ? res.rows.length : 0} filas de ejemplo.${sheets}`;
+      } catch (err) {
+        $('detect-status').textContent = '';
+        if (err.details && err.details.issues) MappingTools.showIssues('No se puede leer el fichero de ejemplo', err);
+        else UI.toast(err.message, 'error');
+      } finally {
+        $('btn-detect').disabled = false;
+      }
+    }
+    $('btn-detect').addEventListener('click', detect);
+
+    // ── Vista previa ────────────────────────────────────────────────────
+    function cell(value) {
+      if (value === null || value === undefined) return '<span class="text-slate-600">—</span>';
+      return esc(typeof value === 'object' ? JSON.stringify(value) : String(value));
+    }
+
+    async function preview() {
+      const sample = sampleBody();
+      if (!sample) { UI.toast('La vista previa necesita un fichero de ejemplo (ruta o subido)', 'error'); return; }
+      const rows = mapEditor.getRows();
+      if (!rows.length) { UI.toast('Añade al menos un campo al mapeo', 'error'); return; }
+      $('preview').innerHTML = '<span class="text-slate-400">Calculando…</span>';
+      try {
+        const res = (await API.post('/mapping-templates/preview', {
+          targetKind: $('t-kind').value,
+          fields: MappingEditor.toTemplateFields(rows),
+          filterExpression: $('t-filter').value.trim() || null,
+          sample,
+        })).data;
+        const items = res.items || [];
+        const columns = Array.from(items.reduce((set, item) => { Object.keys(item || {}).forEach((k) => set.add(k)); return set; }, new Set()));
+        const discarded = res.discarded || [];
+        let html = `<p class="text-xs text-slate-400 mb-3">Filas leídas: ${esc(res.total)} · filtradas por el filtro: ${esc(res.filteredOut || 0)} · descartadas: ${esc(res.discardedCount !== undefined ? res.discardedCount : discarded.length)}${res.written !== undefined ? ` · se escribirían: ${esc(res.written)}` : ''}</p>`;
+        if (items.length) {
+          html += `<div class="overflow-x-auto mb-4"><table class="w-full text-xs"><thead><tr class="border-b border-white/5 text-left text-slate-400">${columns.map((c) => `<th class="px-2 py-1 font-mono">${esc(c)}</th>`).join('')}</tr></thead><tbody>${items.map((item) => `<tr class="border-b border-white/5">${columns.map((c) => `<td class="px-2 py-1 font-mono text-slate-300">${cell(item[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+        } else {
+          html += '<p class="text-sm text-amber-300 mb-4">Ninguna fila produce salida con este mapeo y filtro.</p>';
+        }
+        if (discarded.length) {
+          html += `<p class="text-xs font-medium text-slate-300 mb-1">Filas descartadas (primeras ${discarded.length})</p><ul class="list-disc pl-5 text-xs text-amber-300 space-y-0.5 mb-4">${discarded.map((d) => `<li>Fila ${esc(d.row)}: ${esc(d.reason)}</li>`).join('')}</ul>`;
+        }
+        if (res.stdPreview) {
+          html += `<p class="text-xs font-medium text-slate-300 mb-1">Texto .STD que se escribiría</p><pre class="bg-base border border-white/10 rounded-lg p-3 text-xs font-mono text-slate-300 overflow-x-auto">${esc(res.stdPreview)}</pre>`;
+        }
+        $('preview').innerHTML = html;
+      } catch (err) {
+        $('preview').innerHTML = '';
+        if (err.details && err.details.issues) MappingTools.showIssues('No se puede generar la vista previa', err);
+        else UI.toast(err.message, 'error');
+      }
+    }
+    $('btn-preview').addEventListener('click', preview);
+
+    // ── Instrucciones para la IA, importar y exportar ───────────────────
+    $('btn-ai').addEventListener('click', async () => {
+      try {
+        const res = await MappingTools.fetchRaw('POST', '/mapping-templates/ai-instructions', {
+          targetKind: $('t-kind').value,
+          sampleFields: detectedFields.length ? detectedFields : undefined,
+        });
+        await MappingTools.copyText(await res.text());
+        UI.toast('Instrucciones copiadas: pégalas en tu IA y luego usa «Importar JSON» con lo que te devuelva', 'success');
+      } catch (err) { UI.toast(err.message, 'error'); }
+    });
+
+    function currentDoc() {
+      return MappingTools.buildDoc({
+        name: $('t-name').value.trim(),
+        description: $('t-desc').value.trim(),
+        targetKind: $('t-kind').value,
+        filterExpression: $('t-filter').value.trim(),
+        reader: readerConfig(),
+        rows: mapEditor.getRows(),
+      });
+    }
+
+    $('btn-export').addEventListener('click', () => {
+      if (!mapEditor.getRows().length) { UI.toast('No hay mapeo que exportar', 'error'); return; }
+      const doc = currentDoc();
+      MappingTools.downloadJson(`mapeo-${MappingTools.safeFileName(doc.name)}.json`, doc);
+    });
+
+    // Rellena el formulario con una plantilla en forma interna (sin guardar)
+    async function fillFromTemplate(template, { keepName } = {}) {
+      if (!keepName || !$('t-name').value.trim()) $('t-name').value = template.name || '';
+      $('t-desc').value = template.description || '';
+      $('t-kind').value = template.target_kind || 'api';
+      $('t-filter').value = template.filter_expression || '';
+      applyReader(template.reader);
+      if (!detectedFields.length && Array.isArray(template.sample_fields)) {
+        detectedFields = template.sample_fields.map((name) => ({ name, sampleValues: [] }));
+        renderDetected();
+      }
+      await applyKind();
+      mapEditor.setRows((template.fields || []).map(MappingEditor.fromBackend));
+      mapEditor.refreshSources();
+      refreshStdHints();
+    }
+
+    $('btn-import').addEventListener('click', () => {
+      MappingTools.importJsonDialog({
+        onLoad: async (template) => {
+          await fillFromTemplate(template);
+          if (!editingId) origin = { type: 'import' };
+          UI.toast('JSON cargado en el editor (sin guardar). Revísalo y pulsa «Guardar plantilla».', 'success');
+        },
+      });
+    });
+
+    // ── Guardar ─────────────────────────────────────────────────────────
+    $('btn-save').addEventListener('click', async () => {
+      const name = $('t-name').value.trim();
+      if (!name) { UI.toast('El nombre de la plantilla es obligatorio', 'error'); return; }
+      const rows = mapEditor.getRows();
+      if (!rows.length) { UI.toast('Añade al menos un campo al mapeo', 'error'); return; }
+      const body = {
+        name,
+        description: $('t-desc').value.trim() || null,
+        target_kind: $('t-kind').value,
+        filter_expression: $('t-filter').value.trim() || null,
+        reader: readerConfig(),
+        sample_fields: detectedFields.map((f) => f.name),
+        fields: MappingEditor.toTemplateFields(rows),
+        origin,
+      };
+      $('btn-save').disabled = true;
+      try {
+        if (editingId) {
+          await API.put(`/mapping-templates/${encodeURIComponent(editingId)}`, body);
+        } else {
+          const created = (await API.post('/mapping-templates', body)).data;
+          editingId = created.id;
+        }
+        UI.toast(`Plantilla «${name}» guardada`, 'success');
+        window.location.href = '/mapping-templates';
+      } catch (err) {
+        if (err.details && err.details.issues) MappingTools.showIssues('No se puede guardar la plantilla', err);
+        else UI.toast(err.message, 'error');
+        $('btn-save').disabled = false;
+      }
+    });
+
+    $('t-kind').addEventListener('change', applyKind);
+    $('btn-add-row').addEventListener('click', () => mapEditor.addRow());
+
+    // ── Arranque ────────────────────────────────────────────────────────
+    async function init() {
+      try {
+        const creds = (await API.get('/network-credentials')).data || [];
+        $('s-cred').innerHTML = '<option value="">Sin credencial</option>' + creds
+          .map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(c.domain ? c.domain + '\\' : '')}${esc(c.username)})</option>`).join('');
+      } catch (err) {
+        UI.toast('No se han podido cargar las credenciales de red: ' + err.message, 'error');
+      }
+      if (editingId) {
+        $('page-title').textContent = 'Editar plantilla de mapeo';
+        try {
+          const template = (await API.get(`/mapping-templates/${encodeURIComponent(editingId)}`)).data;
+          origin = template.origin || { type: 'manual' };
+          await fillFromTemplate(template);
+        } catch (err) {
+          UI.toast('No se ha podido cargar la plantilla: ' + err.message, 'error');
+          $('btn-save').disabled = true;
+        }
+      } else {
+        await applyKind();
+        mapEditor.addRow(null, null, { focus: false });
+      }
+    }
+    init();
+  </script>
+</body>
+</html>

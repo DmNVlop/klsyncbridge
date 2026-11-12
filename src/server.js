@@ -95,6 +95,8 @@ function createServer() {
     '/connections': 'connections.html',
     '/api-configs': 'api-configs.html',
     '/network-credentials': 'network-credentials.html',
+    '/mapping-templates': 'mapping-templates.html',
+    '/mapping-template-editor': 'mapping-template-editor.html',
     '/logs': 'logs.html',
     '/users': 'users.html',
     '/settings': 'settings.html',

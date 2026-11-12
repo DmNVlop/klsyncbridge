@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KLSyncBridge — Plantillas de mapeo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>tailwind.config={theme:{extend:{colors:{surface:'#1a1d27',base:'#0f1117',accent:'#3b82f6'},fontFamily:{sans:['Inter','sans-serif'],mono:['JetBrains Mono','monospace']}}}}</script>
+  <style>
+    body{background-color:#0f1117;color:#e2e8f0;font-family:'Inter',sans-serif}
+  </style>
+</head>
+<body>
+  <main class="max-w-[1360px] mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-2">
+      <h1 class="text-2xl font-semibold text-white">Plantillas de mapeo</h1>
+      <a href="/mapping-template-editor" title="Crear una plantilla de mapeo nueva, a mano o importando un JSON" class="px-4 py-2 bg-accent hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">+ Nueva plantilla</a>
+    </div>
+    <p class="text-sm text-slate-400 mb-6">Mapeos reutilizables: qué campo del origen va a qué campo de destino (API o almacén Ardis .STD). Se pueden aplicar a un job (se copian) o usar en el paso «Transformar y exportar» de una automatización (referencia viva).</p>
+
+    <div id="list" class="bg-surface rounded-xl border border-white/5 overflow-hidden">
+      <p class="p-6 text-slate-400">Cargando...</p>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/mapping-tools.js"></script>
+  <script>
+    AUTH.requireAuth();
+    UI.buildNav();
+
+    const esc = UI.escapeHtml;
+    const $ = (id) => document.getElementById(id);
+    const KIND_LABELS = { api: 'API', ardis_std: 'Ardis .STD' };
+    let templates = [];
+
+    async function load() {
+      try {
+        templates = (await API.get('/mapping-templates')).data || [];
+        render();
+      } catch (err) {
+        $('list').innerHTML = `<p class="p-6 text-red-400">No se pudieron cargar las plantillas: ${esc(err.message)}</p>`;
+      }
+    }
+
+    function render() {
+      if (!templates.length) {
+        $('list').innerHTML = '<div class="p-8 text-center text-slate-400">Aún no hay plantillas de mapeo. Crea una con «+ Nueva plantilla».</div>';
+        return;
+      }
+      $('list').innerHTML = `
+        <table class="w-full text-sm">
+          <thead class="text-left text-xs text-slate-400 border-b border-white/5">
+            <tr><th class="px-4 py-3">Nombre</th><th class="px-4 py-3">Destino</th><th class="px-4 py-3">Campos</th><th class="px-4 py-3">Actualizada</th><th class="px-4 py-3 text-right">Acciones</th></tr>
+          </thead>
+          <tbody>${templates.map((t) => `
+            <tr class="border-b border-white/5 last:border-0 align-top">
+              <td class="px-4 py-3"><div class="text-white font-medium">${esc(t.name)}</div>${t.description ? `<div class="text-xs text-slate-500">${esc(t.description)}</div>` : ''}</td>
+              <td class="px-4 py-3 text-slate-300">${esc(KIND_LABELS[t.target_kind] || t.target_kind)}</td>
+              <td class="px-4 py-3 text-slate-300">${esc(t.fieldCount)}</td>
+              <td class="px-4 py-3 text-slate-400 text-xs">${esc(UI.formatDate(t.updated_at))}</td>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <a href="/mapping-template-editor?id=${encodeURIComponent(t.id)}" title="Abrir la plantilla para ver o cambiar su mapeo" class="inline-block px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">Editar</a>
+                <button data-act="duplicate" data-id="${esc(t.id)}" title="Crear una copia de la plantilla con el nombre «(copia)»" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">Duplicar</button>
+                <button data-act="export" data-id="${esc(t.id)}" title="Descargar la plantilla como fichero JSON (formato klsyncbridge.mapping v1)" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white text-xs">Exportar JSON</button>
+                <button data-act="delete" data-id="${esc(t.id)}" title="Eliminar la plantilla (no se puede si alguna automatización la usa)" class="px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 text-xs">Eliminar</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    $('list').addEventListener('click', (event) => {
+      const btn = event.target.closest('button[data-act]');
+      if (!btn) return;
+      const template = templates.find((t) => t.id === btn.dataset.id);
+      if (!template) return;
+      if (btn.dataset.act === 'duplicate') duplicate(template);
+      else if (btn.dataset.act === 'export') exportTemplate(template);
+      else if (btn.dataset.act === 'delete') remove(template);
+    });
+
+    async function duplicate(template) {
+      try {
+        const copy = (await API.post(`/mapping-templates/${encodeURIComponent(template.id)}/duplicate`)).data;
+        UI.toast(`Copia creada: «${copy.name}»`, 'success');
+        load();
+      } catch (err) { UI.toast(err.message, 'error'); }
+    }
+
+    async function exportTemplate(template) {
+      try {
+        const res = await MappingTools.fetchRaw('GET', `/mapping-templates/${encodeURIComponent(template.id)}/export`);
+        MappingTools.downloadBlob(`mapeo-${MappingTools.safeFileName(template.name)}.json`, await res.blob());
+      } catch (err) { UI.toast(err.message, 'error'); }
+    }
+
+    function usagesHtml(usages) {
+      return [['jobs', 'Jobs (copiados de esta plantilla)'], ['automations', 'Automatizaciones']]
+        .filter(([key]) => usages && usages[key] && usages[key].length)
+        .map(([key, label]) => `<strong>${label}:</strong> ${usages[key].map((u) => esc(u.name)).join(', ')}`)
+        .join('<br>');
+    }
+
+    async function remove(template) {
+      const ok = await UI.confirmDialog('Eliminar plantilla', `¿Eliminar «${esc(template.name)}»? Esta acción no se puede deshacer.`, 'Eliminar', 'bg-red-700 hover:bg-red-600 text-white');
+      if (!ok) return;
+      try {
+        await API.delete(`/mapping-templates/${encodeURIComponent(template.id)}`);
+        UI.toast('Plantilla eliminada', 'success');
+        load();
+      } catch (err) {
+        const list = usagesHtml(err.details && err.details.usages);
+        if (list) {
+          await UI.confirmDialog('No se puede eliminar', `La plantilla está en uso. Cámbiala en estos elementos antes de eliminarla:<br><br>${list}`, 'Entendido', 'bg-accent hover:bg-blue-500 text-white');
+        } else {
+          UI.toast(err.message, 'error');
+        }
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>
