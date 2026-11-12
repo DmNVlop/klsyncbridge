@@ -52,6 +52,7 @@ const DESTINATION_MODES = {
 const FILE_FORMATS = {
   CSV: 'csv',
   JSON: 'json',
+  ARDIS_STD: 'ardis_std',
 };
 
 const FILE_RETENTION = {
