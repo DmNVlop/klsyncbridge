@@ -9,6 +9,9 @@ const { executeJob } = require('./jobs.executor');
 const { registerJob, unregisterJob, reloadJob, getSchedulerStatus } = require('./jobs.scheduler');
 const logsSvc = require('../logs/logs.service');
 const eventsService = require('../../services/events.service');
+const {
+  STD_RECORD_KEYS, STD_DEFAULTS, STD_IGNORED_KEYS, STD_HEADER_KEYS, STD_KEY_PATTERN,
+} = require('../../core/outputs/ardis-std/std-keys');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -21,6 +24,19 @@ router.get('/', (req, res) => {
 router.get('/scheduler/status', (req, res) => {
   try { return success(res, getSchedulerStatus()); }
   catch (err) { return fromError(res, err); }
+});
+
+// Catálogo de claves del almacén Ardis (.STD) para el editor de mapeo (única fuente: core/outputs/ardis-std/std-keys)
+router.get('/std-keys', (req, res) => {
+  try {
+    return success(res, {
+      recordKeys: STD_RECORD_KEYS,
+      defaults: STD_DEFAULTS,
+      ignoredKeys: STD_IGNORED_KEYS,
+      headerKeys: STD_HEADER_KEYS,
+      keyPattern: STD_KEY_PATTERN.source,
+    });
+  } catch (err) { return fromError(res, err); }
 });
 
 router.get('/:id', (req, res) => {
