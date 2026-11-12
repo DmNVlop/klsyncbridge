@@ -7,6 +7,7 @@ process.chdir(path.join(__dirname, '..'));
 
 const { Service } = require('node-windows');
 const { execSync } = require('child_process');
+const { ensureServiceRunning } = require('../src/utils/windows-service');
 
 function createShortcuts() {
   const url = 'http://localhost:3847';
@@ -50,29 +51,34 @@ const svc = new Service({
   ],
 });
 
-svc.on('install', () => {
+svc.on('install', async () => {
   console.log('✅ Servicio KLSyncBridge instalado');
 
-  svc.start();
-  console.log('✅ Servicio iniciado');
-
-  // sc failure necesita que SCM registre el servicio — esperar 3s.
+  // svc.start() de node-windows no avisa si el arranque falla: se arranca y se comprueba con sc.exe.
   // En SCM el servicio se llama como su ejecutable de node-windows (svc._exe = 'klsyncbridge.exe'),
   // no como el nombre visible 'KLSyncBridge'.
-  setTimeout(() => {
-    try {
-      execSync(`sc.exe failure "${svc._exe}" reset= 86400 actions= restart/5000/restart/10000/restart/30000`, { stdio: 'inherit' });
-      console.log('✅ Configuración de recovery aplicada');
-    } catch (err) {
-      console.warn(`⚠️  No se pudo configurar el reinicio automático del servicio ${svc._exe}:`, err.message);
-    }
+  try {
+    await ensureServiceRunning(svc._exe);
+    console.log('✅ Servicio iniciado (RUNNING)');
+  } catch (err) {
+    console.error(`❌ ${err.message}`);
+    process.exit(1);
+    return;
+  }
 
-    createShortcuts();
-    console.log('\n🌐 Accede a KLSyncBridge en: http://localhost:3847');
+  // Con el servicio ya en RUNNING, el SCM lo tiene registrado y sc failure funciona.
+  try {
+    execSync(`sc.exe failure "${svc._exe}" reset= 86400 actions= restart/5000/restart/10000/restart/30000`, { stdio: 'inherit' });
+    console.log('✅ Configuración de recovery aplicada');
+  } catch (err) {
+    console.warn(`⚠️  No se pudo configurar el reinicio automático del servicio ${svc._exe}:`, err.message);
+  }
 
-    // Mantener proceso vivo hasta que todo termine, luego salir limpiamente
-    setTimeout(() => process.exit(0), 500);
-  }, 3000);
+  createShortcuts();
+  console.log('\n🌐 Accede a KLSyncBridge en: http://localhost:3847');
+
+  // Margen para que se vacíen las salidas antes de terminar
+  setTimeout(() => process.exit(0), 500);
 });
 
 // Código de salida distinto de 0: el Setup (installer-setup.js) lo detecta y avisa.

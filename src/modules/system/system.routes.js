@@ -15,6 +15,7 @@ const { getDb } = require('../../config/database');
 const logger = require('../../services/logger.service');
 const { getUpdateMode } = require('./updaters/update-mode');
 const { execSc } = require('../../utils/windows-console');
+const { parseServiceState } = require('../../utils/windows-service');
 const { updateChecker, localVersion } = require('./update-check.service');
 const { runLegacyZipUpdate } = require('./updaters/legacy-zip.updater');
 const { runInstallerUpdate, runInstallerMigration } = require('./updaters/installer.updater');
@@ -60,8 +61,7 @@ router.get('/status', (req, res) => {
     }
 
     const text = stdout || '';
-    const stateMatch = text.match(/(?:STATE|ESTADO|STATUS|ETAT|ÉTAT|STATO)\s*:\s*\d+\s+(\w+)/i);
-    const state = stateMatch ? stateMatch[1] : 'UNKNOWN';
+    const state = parseServiceState(text) || 'UNKNOWN';
     return success(res, { installed: true, state, raw: text.trim() });
   });
 });
@@ -169,8 +169,7 @@ function waitForState(targetState, timeoutMs = 15000) {
         if (targetState === 'STOPPED' && (err || text.includes('1060'))) {
           return resolve(); // servicio no existe = parado/desinstalado
         }
-        const stateMatch = text.match(/(?:STATE|ESTADO|STATUS|ETAT|ÉTAT|STATO)\s*:\s*\d+\s+(\w+)/i);
-        const state = stateMatch ? stateMatch[1] : '';
+        const state = parseServiceState(text) || '';
         if (state === targetState) return resolve();
         if (Date.now() > deadline) return reject(new AppError(`Timeout esperando estado ${targetState}`, 'TIMEOUT', 500));
         setTimeout(check, 1500);

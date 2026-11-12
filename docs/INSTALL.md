@@ -32,6 +32,8 @@ El instalador no termina hasta comprobar que el servicio responde (`http://local
 
 Mensaje «Los ficheros se han copiado, pero no se pudo configurar el servicio» o «No se pudo preparar la instalación». Los datos (`C:\ProgramData\KLSyncBridge`) no se pierden en ningún caso.
 
+**Rollback al cerrar la ventana.** Si el fallo ocurre en una actualización desde una instalación antigua, al cerrar la ventana del Setup se intenta restaurar el servicio anterior (log: `logs\legacy-rollback.log`). Si antes de cerrarla arrancas el servicio nuevo a mano y `http://localhost:3847/api/health` responde, no se restaura nada. Si la instalación antigua estaba dentro de `ProgramData`, el rollback también devuelve la base de datos a la copia `data\backup-pre-installer-<fecha>\` (si falta, no arranca la versión antigua y se conserva `legacy-migration.json`). Los logs del servicio nuevo fallido (`*.err.log`, `*.out.log`, `*.wrapper.log`) se guardan en `logs\failed-daemon-<fecha>\`.
+
 1. Abrir `C:\ProgramData\KLSyncBridge\logs\installer-setup.log` y leer las últimas líneas (las que empiezan por ❌ explican la causa).
 2. En un **PowerShell como administrador**, ver el estado del servicio:
    ```powershell
@@ -49,6 +51,8 @@ Mensaje «Los ficheros se han copiado, pero no se pudo configurar el servicio» 
    Hace lo mismo que el final del instalador y escribe en pantalla cada paso; termina con «✅ Servicio en marcha y respondiendo». Si no, enviar a soporte su salida y `installer-setup.log`.
 
 **Desde una instalación antigua (carpeta con `instalar.bat`, v2.2.0 o anterior):** ejecutar el Setup sin desinstalar nada. Detecta el servicio antiguo, lo para, lo sustituye y copia `data\` y `.env` a `ProgramData` (solo si allí aún no hay datos). Se entra con el usuario y la contraseña de siempre. La carpeta antigua queda intacta como copia de seguridad: se puede borrar cuando se compruebe que todo funciona.
+
+Si la instalación antigua estaba ya dentro de `C:\ProgramData\klsyncbridge` (misma carpeta que los datos nuevos), no se copia ni se mueve nada: antes de tocar la base de datos el Setup guarda una copia en `data\backup-pre-installer-<fecha>\`.
 
 ### Pasar de una instalación antigua al instalador
 

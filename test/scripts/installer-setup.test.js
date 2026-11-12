@@ -57,7 +57,16 @@ test('cleanUpdatesDir borra los Setup anteriores y no falla si la carpeta no exi
   assert.deepEqual(fs.readdirSync(dir), []);
 });
 
-const { removeStaleDaemon } = require('../../scripts/installer-setup');
+const { removeStaleDaemon, removeMigrationMarker } = require('../../scripts/installer-setup');
+
+test('removeMigrationMarker borra legacy-migration.json si existe y no falla si no existe', () => {
+  const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'klsb-marker-'));
+  assert.equal(removeMigrationMarker(dataRoot), false);
+  const marker = path.join(dataRoot, 'legacy-migration.json');
+  fs.writeFileSync(marker, '{}');
+  assert.equal(removeMigrationMarker(dataRoot), true);
+  assert.equal(fs.existsSync(marker), false);
+});
 
 test('removeStaleDaemon borra src/daemon de una instalación anterior si el servicio ya no está en Windows', () => {
   const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'klsb-app-'));

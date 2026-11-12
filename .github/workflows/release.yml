@@ -70,8 +70,7 @@ jobs:
           ./node.exe -e "const k=require('koffi'); k.load('mpr.dll'); console.log('koffi OK')"
           ./node.exe -e "require('./src/server'); console.log('server OK')"
 
-      # Espera fija justificada: install-service.js termina por temporizador y no hay evento que esperar;
-      # si el servicio no aparece, Get-Service falla y el job también.
+      # install-service.js sale con código 1 si el servicio no llega a RUNNING (lo comprueba con sc.exe).
       - name: Prueba de servicio (instalar y quitar con node-windows)
         shell: pwsh
         working-directory: build/app
@@ -79,8 +78,9 @@ jobs:
           $env:DATA_DIR = "$env:RUNNER_TEMP\klsb\data"; $env:LOG_DIR = "$env:RUNNER_TEMP\klsb\logs"
           ./node.exe scripts/setup.js
           ./node.exe scripts/install-service.js
-          Start-Sleep -Seconds 5
+          if ($LASTEXITCODE -ne 0) { throw "install-service.js falló (código $LASTEXITCODE)" }
           $s = Get-Service klsyncbridge.exe -ErrorAction Stop
+          if ($s.Status -ne 'Running') { throw "El servicio no está en marcha: $($s.Status)" }
           Write-Output "Servicio: $($s.Status)"
           $recovery = sc.exe qfailure klsyncbridge.exe | Out-String
           if ($recovery -notmatch 'RESTART') { throw "El servicio no tiene configurado el reinicio automático:`n$recovery" }

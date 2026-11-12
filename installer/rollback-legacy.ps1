@@ -43,6 +43,56 @@ function Wait-ServiceGone($seconds) {
   return -not (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)
 }
 
+function Get-ConfiguredPort {
+  $port = 3847
+  $envFile = Join-Path $DataRoot '.env'
+  if (Test-Path $envFile) {
+    $m = Select-String -Path $envFile -Pattern '^\s*PORT\s*=\s*(\d+)' | Select-Object -First 1
+    if ($m) { $port = [int]$m.Matches[0].Groups[1].Value }
+  }
+  return $port
+}
+
+function Wait-Health($port, $seconds) {
+  $deadline = (Get-Date).AddSeconds($seconds)
+  do {
+    try {
+      $r = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/api/health" -TimeoutSec 3
+      if ($r.StatusCode -eq 200) { return $true }
+    } catch {
+      Start-Sleep -Seconds 2
+    }
+  } while ((Get-Date) -lt $deadline)
+  return $false
+}
+
+# Restaura la BD compartida (instalación antigua dentro de ProgramData) desde la copia que hizo prepare.ps1.
+function Restore-SharedDb($backupDir) {
+  if (-not $backupDir -or -not (Test-Path $backupDir)) {
+    throw 'La instalación antigua comparte la BD con la nueva y no hay copia de seguridad (dbBackup) utilizable: no se arranca la versión antigua sobre una BD migrada.'
+  }
+  $dataDir = Join-Path $DataRoot 'data'
+  New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+  foreach ($name in 'klsyncbridge.db-wal', 'klsyncbridge.db-shm') {
+    $cur = Join-Path $dataDir $name
+    if (Test-Path $cur) { Remove-Item -Force -Path $cur }
+  }
+  $backupDb = Join-Path $backupDir 'klsyncbridge.db'
+  if (Test-Path $backupDb) {
+    Copy-Item -Path $backupDb -Destination (Join-Path $dataDir 'klsyncbridge.db') -Force
+  } else {
+    # La copia no tenía BD (no existía al preparar): se retira la creada después.
+    $curDb = Join-Path $dataDir 'klsyncbridge.db'
+    if (Test-Path $curDb) { Remove-Item -Force -Path $curDb }
+  }
+  foreach ($name in 'klsyncbridge.db-wal', 'klsyncbridge.db-shm') {
+    $b = Join-Path $backupDir $name
+    if (Test-Path $b) { Copy-Item -Path $b -Destination (Join-Path $dataDir $name) -Force }
+  }
+  Write-Log "BD restaurada desde $backupDir"
+}
+
+Write-Log "Inicio del rollback (AppDir=$AppDir, DataRoot=$DataRoot)."
 try {
   if (-not (Test-Path $markerPath)) {
     Write-Log 'Sin marcador de migración: no hay nada que restaurar.'
@@ -50,7 +100,34 @@ try {
   }
   $marker = Get-Content -Raw -Path $markerPath | ConvertFrom-Json
   $oldRoot = [string]$marker.oldRoot
-  Write-Log "Restaurando el servicio antiguo de: $oldRoot"
+  $sharedRoot = [bool]$marker.sharedRoot
+  $dbBackup = [string]$marker.dbBackup
+  Write-Log "Restaurando el servicio antiguo de: $oldRoot (sharedRoot=$sharedRoot)"
+
+  # 0. Si el servicio nuevo ya está en marcha y responde (p. ej. se arrancó a mano tras el fallo), no se toca.
+  $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+  if ($svc -and (Test-IsUnder (Get-ServiceImagePath) $AppDir)) {
+    $port = Get-ConfiguredPort
+    $newHealthy = $false
+    if ($svc.Status -eq 'Running') {
+      $newHealthy = Wait-Health $port 20
+    } elseif ($svc.Status -eq 'Stopped') {
+      Write-Log 'El servicio nuevo está parado: se intenta arrancar una vez antes de decidir.'
+      try {
+        Start-Service -Name $serviceName
+        (Get-Service -Name $serviceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
+        $newHealthy = Wait-Health $port 60
+      } catch {
+        Write-Log "El servicio nuevo no arranca: $($_.Exception.Message)"
+      }
+    }
+    if ($newHealthy) {
+      Remove-Item -Force -Path $markerPath
+      Write-Log 'El servicio nuevo está en marcha y responde: no se restaura el antiguo.'
+      exit 0
+    }
+    Write-Log 'El servicio nuevo no responde: se procede a restaurar el antiguo.'
+  }
 
   # 1. Si el servicio registrado es el NUEVO (bajo AppDir), se elimina junto con su envoltorio.
   $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
@@ -62,8 +139,17 @@ try {
     }
     & sc.exe delete $serviceName | Out-Null
     if (-not (Wait-ServiceGone 30)) { throw 'El servicio nuevo sigue marcado para eliminación (cierra services.msc o reinicia el equipo).' }
+    # Los logs del envoltorio (*.err.log, *.out.log, *.wrapper.log) se conservan para soporte.
     $newDaemon = Join-Path $AppDir 'src\daemon'
-    if (Test-Path $newDaemon) { Remove-Item -Recurse -Force -Path $newDaemon }
+    if (Test-Path $newDaemon) {
+      try {
+        $failedDir = Join-Path $logDir ('failed-daemon-{0}' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        Move-Item -Path $newDaemon -Destination $failedDir
+        Write-Log "Carpeta del servicio nuevo movida a $failedDir"
+      } catch {
+        Write-Log "No se pudo mover $newDaemon (se continúa): $($_.Exception.Message)"
+      }
+    }
   }
 
   # 2. Datos copiados a ProgramData: se apartan para que un reintento vuelva a migrar desde la carpeta antigua.
@@ -74,6 +160,9 @@ try {
     if (Test-Path $dataDir) { Rename-Item -Path $dataDir -NewName "data.failed-$stamp"; Write-Log "data apartado como data.failed-$stamp" }
     if (Test-Path $envFile) { Rename-Item -Path $envFile -NewName ".env.failed-$stamp"; Write-Log ".env apartado como .env.failed-$stamp" }
   }
+
+  # 2b. BD compartida: devolverla a su estado previo (la nueva versión pudo migrarla) antes de arrancar la antigua.
+  if ($sharedRoot) { Restore-SharedDb $dbBackup }
 
   # 3. Reinstalar el servicio antiguo con su envoltorio (el .xml conserva node, script y entorno de antes).
   $oldExe = Join-Path $oldRoot 'src\daemon\klsyncbridge.exe'
@@ -114,16 +203,7 @@ try {
     $m = Select-String -Path $oldEnv -Pattern '^\s*PORT\s*=\s*(\d+)' | Select-Object -First 1
     if ($m) { $port = [int]$m.Matches[0].Groups[1].Value }
   }
-  $healthy = $false
-  $deadline = (Get-Date).AddSeconds(60)
-  while (-not $healthy -and (Get-Date) -lt $deadline) {
-    try {
-      $r = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/api/health" -TimeoutSec 3
-      if ($r.StatusCode -eq 200) { $healthy = $true }
-    } catch {
-      Start-Sleep -Seconds 2
-    }
-  }
+  $healthy = Wait-Health $port 60
   if (-not $healthy) { throw "El servicio antiguo arrancó pero no responde en http://127.0.0.1:$port/api/health." }
 
   Remove-Item -Force -Path $markerPath

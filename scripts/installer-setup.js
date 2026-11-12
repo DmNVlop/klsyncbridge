@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { execFileSync } = require('child_process');
+const { SERVICE_ID, queryServiceState } = require('../src/utils/windows-service');
 
 const DEFAULT_PORT = 3847;
 const HEALTH_TIMEOUT_MS = 60 * 1000;
@@ -70,18 +71,21 @@ async function waitForHealth(port, { timeoutMs = HEALTH_TIMEOUT_MS, pollMs = HEA
   throw new Error(`El servicio no responde en http://127.0.0.1:${port}/api/health tras ${Math.round(timeoutMs / 1000)} s`);
 }
 
-const SERVICE_ID = 'klsyncbridge.exe';
-const SC_SERVICE_NOT_FOUND = 1060;
-
 /** true si Windows tiene registrado el servicio (sc.exe query sale con 1060 cuando no existe). */
 function isServiceRegistered(serviceId = SERVICE_ID) {
-  try {
-    execFileSync('sc.exe', ['query', serviceId], { stdio: 'ignore' });
-    return true;
-  } catch (err) {
-    if (err.status === SC_SERVICE_NOT_FOUND) return false;
-    throw new Error(`No se pudo consultar el servicio ${serviceId} con sc.exe (código ${err.status ?? err.code})`);
-  }
+  return queryServiceState(serviceId).installed;
+}
+
+/**
+ * Borra el marcador de migración (legacy-migration.json) que deja la migración desde v2.2.0. Con el servicio nuevo
+ * ya sano, un Setup posterior fallido nunca debe volver a la versión antigua por culpa de un marcador sobrante.
+ */
+function removeMigrationMarker(dataRoot) {
+  const markerPath = path.join(dataRoot, 'legacy-migration.json');
+  if (!fs.existsSync(markerPath)) return false;
+  fs.rmSync(markerPath, { force: true });
+  console.log(`🧹 Marcador de migración eliminado: ${markerPath}`);
+  return true;
 }
 
 /**
@@ -131,6 +135,7 @@ async function main() {
   console.log(`▶ Esperando a que el servicio responda en el puerto ${port}...`);
   await waitForHealth(port);
   console.log('✅ Servicio en marcha y respondiendo');
+  removeMigrationMarker(dataRoot);
 }
 
 if (require.main === module) {
@@ -140,4 +145,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ensureEnvFile, readPort, waitForHealth, cleanUpdatesDir, removeStaleDaemon };
+module.exports = { ensureEnvFile, readPort, waitForHealth, cleanUpdatesDir, removeStaleDaemon, removeMigrationMarker };

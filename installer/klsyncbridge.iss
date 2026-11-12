@@ -84,7 +84,7 @@ begin
     Log('installer-setup.js falló. Código: ' + IntToStr(ResultCode) + '. Log: ' + LogFile);
     SuppressibleMsgBox('Los ficheros se han copiado, pero no se pudo configurar el servicio KLSyncBridge (código ' +
         IntToStr(ResultCode) + ').' + #13#10#13#10 + 'Revisa el log:' + #13#10 + LogFile + #13#10#13#10 +
-        'Si era una instalación antigua, se intenta restaurar el servicio anterior (log: legacy-rollback.log, en la misma carpeta de logs).' + #13#10#13#10 +
+        'Si era una instalación antigua, al cerrar esta ventana se intentará restaurar el servicio anterior (log: legacy-rollback.log, en la misma carpeta de logs); si antes arrancas el servicio nuevo a mano y responde, no se restaurará.' + #13#10#13#10 +
         'Vuelve a ejecutar el instalador como administrador. Si sigue fallando, sigue los pasos de' + #13#10 +
         ExpandConstant('{app}\docs\INSTALL.md') + ' (apartado «Si el instalador falla») o contacta con soporte.', mbError, MB_OK, IDOK);
   end;
