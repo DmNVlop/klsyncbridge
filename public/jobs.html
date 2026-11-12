@@ -84,6 +84,7 @@
                 }
                 <button onclick="resetSnapshot('${j.id}','${j.name.replace(/'/g,"\\'")}');" class="px-2 py-1 rounded bg-white/5 hover:bg-purple-900/20 hover:text-purple-400 text-slate-400 text-xs" title="Borrar snapshot local — fuerza resync completo en próxima ejecución">↺ Snap</button>
                 <a href="/job-editor.html?id=${j.id}" class="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-slate-400 text-xs">Editar</a>
+                <button onclick="duplicateJob('${j.id}');" class="px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-slate-400 text-xs" title="Crear una copia inactiva de este job (mismos ajustes y mapeo, sin snapshot) para adaptarla">Duplicar</button>
                 <button onclick="del('${j.id}','${j.name.replace(/'/g,"\\'")}');" class="px-2 py-1 rounded bg-white/5 hover:bg-red-900/20 hover:text-red-400 text-slate-400 text-xs">Eliminar</button>
               </div>
             </td>
@@ -122,6 +123,14 @@
       try {
         const res = await API.post(`/jobs/${id}/reset-snapshot`);
         UI.toast(`Snapshot reseteado (${res.data.deleted} registros eliminados)`, 'info');
+      } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+    }
+
+    async function duplicateJob(id) {
+      try {
+        const res = await API.post(`/jobs/${id}/duplicate`);
+        UI.toast(`Copia creada: «${res.data.name}» (inactiva)`);
+        load();
       } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
     }
 

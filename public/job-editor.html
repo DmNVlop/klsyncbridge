@@ -367,7 +367,14 @@
           </thead>
           <tbody id="map-rows"></tbody>
         </table>
-        <button type="button" onclick="addMapRow()" class="text-sm text-accent hover:text-blue-400">+ Añadir fila</button>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="addMapRow()" title="Añadir una fila vacía al mapeo para configurarla a mano" class="text-sm text-accent hover:text-blue-400 mr-3">+ Añadir fila</button>
+          <button type="button" onclick="saveMappingAsTemplate()" title="Guardar el mapeo actual como plantilla reutilizable en otros jobs y automatizaciones" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 text-xs hover:bg-white/5">Guardar como plantilla</button>
+          <button type="button" onclick="openApplyTemplate()" title="Sustituir el mapeo actual por el de una plantilla guardada (se copia; no queda enlazado)" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 text-xs hover:bg-white/5">Aplicar plantilla</button>
+          <button type="button" onclick="openImportMappingJson()" title="Cargar un mapeo desde un JSON pegado o un fichero; se rellena el editor sin guardar" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 text-xs hover:bg-white/5">Importar JSON</button>
+          <button type="button" onclick="exportMappingJson()" title="Descargar el mapeo que hay ahora en el editor como fichero JSON" class="px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 text-xs hover:bg-white/5">Exportar JSON</button>
+        </div>
+        <p id="mapping-origin-note" class="hidden text-xs text-slate-500 mt-2"></p>
       </div>
       <!-- Filtro de filas -->
       <div class="mt-6 bg-base rounded-lg border border-white/5">
@@ -811,6 +818,8 @@
 
   <script src="/js/auth.js"></script>
   <script src="/js/ui.js"></script>
+  <script src="/js/mapping-editor.js"></script>
+  <script src="/js/mapping-tools.js"></script>
   <script>
     AUTH.requireAuth();
     let currentStep = 1, editingId = null, sqlFields = [], fieldMaps = [], apiConfigs = [];
@@ -920,6 +929,7 @@
             };
           });
           renderMapRows();
+          showMappingOrigin(j.mapping_origin);
         } catch(e){ console.error(e); }
       }
 
@@ -1069,30 +1079,16 @@
         document.getElementById('std-required-list').innerHTML = stdKeysCatalog.recordKeys
           .filter(k => k.required).map(k => `<span class="std-req font-mono" data-key="${k.key}">${k.key}</span>`).join(', ');
       }
-      document.querySelectorAll('#map-rows .map-api').forEach(i => i.setAttribute('list', std ? 'std-key-options' : 'api-schema-fields'));
+      mapEditor.setTargetList(std ? 'std-key-options' : 'api-schema-fields');
       refreshStdMappingHints();
     }
 
     // Errores por fila (clave no válida) y obligatorias que faltan (en rojo, sin bloquear el guardado)
     function refreshStdMappingHints() {
-      const std = isStdSelected();
-      const pattern = stdKeysCatalog ? new RegExp(stdKeysCatalog.keyPattern) : null;
-      const mapped = new Set();
-      document.querySelectorAll('#map-rows tr').forEach(r => {
-        const input = r.querySelector('.map-api');
-        const errorEl = r.querySelector('.map-std-error');
-        if (!input || !errorEl) return;
-        const value = input.value.trim();
-        if (value) mapped.add(value.toUpperCase());
-        const invalid = std && pattern && value && !pattern.test(value);
-        errorEl.textContent = invalid ? 'Clave no válida: solo letras, números, _ y $' : '';
-        errorEl.classList.toggle('hidden', !invalid);
-      });
-      document.querySelectorAll('#std-required-list .std-req').forEach(el => {
-        const missing = !mapped.has(el.dataset.key);
-        el.classList.toggle('text-red-400', missing);
-        el.classList.toggle('font-semibold', missing);
-        el.classList.toggle('text-emerald-400', !missing);
+      mapEditor.applyStdHints({
+        std: isStdSelected(),
+        pattern: stdKeysCatalog ? new RegExp(stdKeysCatalog.keyPattern) : null,
+        requiredEl: document.getElementById('std-required-list'),
       });
     }
 
@@ -1111,7 +1107,7 @@
     }
 
     function getMappedApiFields() {
-      return Array.from(document.querySelectorAll('#map-rows .map-api')).map(i => i.value.trim()).filter(Boolean);
+      return mapEditor.getTargetNames();
     }
 
     function toggleSchemaPanel() {
@@ -1230,229 +1226,19 @@
       }
     }
 
-    // ── Map rows ──────────────────────────────────────────────────
-    const TRANSFORMS = ['none','uppercase','lowercase','trim','number','boolean','date_iso','string'];
+    // ── Map rows (el componente vive en /js/mapping-editor.js) ───────
+    const mapEditor = MappingEditor.create({
+      tbody: document.getElementById('map-rows'),
+      getSourceFields: () => sqlFields,
+      getTargetListId: () => (isStdSelected() ? 'std-key-options' : 'api-schema-fields'),
+      onChange: () => updateJsonPreview(),
+      onTargetChange: () => { renderSchemaPanel(); refreshStdMappingHints(); },
+      onRowRemoved: () => renderSchemaPanel(),
+    });
 
-    function makeSqlOpts(selected) {
-      const empty = `<option value="">— ninguno —</option>`;
-      return empty + sqlFields.map(f =>
-        `<option value="${f.name}" ${f.name===selected?'selected':''}>${f.name}</option>`
-      ).join('');
-    }
-
-    function makeTransformOpts(selected) {
-      return TRANSFORMS.map(t => `<option value="${t}" ${t===selected?'selected':''}>${t}</option>`).join('');
-    }
-
-    function makeOpOpts(selected) {
-      const ops = ['>=','<=','>','<','===','!==','includes'];
-      return ops.map(o => `<option value="${o}" ${o===selected?'selected':''}>${o}</option>`).join('');
-    }
-
-    function setMapRowMode(row, mode) {
-      const btns = row.querySelectorAll('.map-mode-btn');
-      btns.forEach(b => {
-        b.classList.remove('active-field','active-static','active-expr');
-      });
-      const active = row.querySelector(`.map-mode-btn[data-mode="${mode}"]`);
-      if (active) active.classList.add(`active-${mode}`);
-
-      row.querySelector('.cell-field').style.display   = mode === 'field'      ? '' : 'none';
-      row.querySelector('.cell-static').style.display  = mode === 'static'     ? '' : 'none';
-      row.querySelector('.cell-expr').style.display    = mode === 'expression' ? '' : 'none';
-      row.querySelector('.cell-transform').style.display = mode !== 'static'   ? '' : 'none';
-
-      row.dataset.mode = mode;
-      updateJsonPreview();
-    }
-
-    function toggleExprAdvanced(row) {
-      const builder = row.querySelector('.expr-builder-simple');
-      const adv     = row.querySelector('.expr-builder-adv');
-      const isAdv   = adv.style.display !== 'none';
-      builder.style.display = isAdv ? ''     : 'none';
-      adv.style.display     = isAdv ? 'none' : '';
-
-      if (!isAdv) {
-        const expr = buildSimpleExpression(row);
-        if (expr) row.querySelector('.expr-adv-input').value = expr;
-      }
-      updateJsonPreview();
-    }
-
-    function buildSimpleExpression(row) {
-      const condField = row.querySelector('.expr-cond-field').value;
-      const condOp    = row.querySelector('.expr-cond-op').value;
-      const condVal   = row.querySelector('.expr-cond-val').value;
-      const thenVal   = row.querySelector('.expr-then').value;
-      const elseVal   = row.querySelector('.expr-else').value;
-      if (!condField) return '';
-      const lhs = condField;
-      const rhs = isNaN(condVal) || condVal === '' ? `"${condVal}"` : condVal;
-      const thenOut = (thenVal && isNaN(thenVal)) ? `"${thenVal}"` : (thenVal || 'null');
-      const elseOut = (elseVal && isNaN(elseVal)) ? `"${elseVal}"` : (elseVal || 'null');
-      return `${lhs} ${condOp} ${rhs} ? ${thenOut} : ${elseOut}`;
-    }
-
-    function getRowExpression(row) {
-      const adv = row.querySelector('.expr-builder-adv');
-      if (adv.style.display !== 'none') {
-        return row.querySelector('.expr-adv-input').value.trim();
-      }
-      return buildSimpleExpression(row);
-    }
-
-    function addMapRow(map=null, prefilledApiField=null) {
-      const mode = map?.source_type || 'field';
-      const sqlOpts = makeSqlOpts(map?.sql || '');
-      const tOpts   = makeTransformOpts(map?.transform || 'none');
-      const opOpts  = makeOpOpts('>=');
-
-      const row = document.createElement('tr');
-      row.className = 'border-b border-white/5 align-top';
-      row.dataset.mode = mode;
-
-      row.innerHTML = `
-        <td class="py-2 px-2" style="min-width:140px">
-          <input type="text" class="inp map-api" placeholder="campo o padre.hijo" list="${isStdSelected() ? 'std-key-options' : 'api-schema-fields'}" value="${prefilledApiField||map?.api||''}">
-          <p class="map-std-error hidden text-xs text-red-400 mt-1"></p>
-          <p class="text-xs text-slate-600 mt-1">Nombre del campo en el JSON de salida. Usa <span class="font-mono">.</span> para anidado: <span class="font-mono">datos.color</span>.</p>
-        </td>
-        <td class="py-2 px-2" style="min-width:90px">
-          <div class="flex gap-1 flex-wrap">
-            <button type="button" class="map-mode-btn" data-mode="field"      onclick="setMapRowMode(this.closest('tr'),'field')">Campo Fuente</button>
-            <button type="button" class="map-mode-btn" data-mode="static"     onclick="setMapRowMode(this.closest('tr'),'static')">Fijo</button>
-            <button type="button" class="map-mode-btn" data-mode="expression" onclick="setMapRowMode(this.closest('tr'),'expression')">Expr.</button>
-          </div>
-        </td>
-        <td class="py-2 px-2 cell-field" style="min-width:130px">
-          <select class="inp map-sql">${sqlOpts}</select>
-        </td>
-        <td class="py-2 px-2 cell-static" style="min-width:130px;display:none">
-          <input type="text" class="inp map-static-val" placeholder="ej: 10 o &quot;activo&quot;" value="${map?.static_val||''}">
-          <p class="text-xs text-slate-600 mt-1">Texto libre: <span class="font-mono">Activo</span>. Número: <span class="font-mono">10</span>. Booleano: <span class="font-mono">true</span>.</p>
-        </td>
-        <td class="py-2 px-2 cell-expr" style="min-width:260px;display:none">
-          <div class="expr-builder-simple space-y-1">
-            <div class="expr-builder">
-              <span class="text-xs text-slate-500">si</span>
-              <select class="expr-cond-field inp" style="max-width:110px">${makeSqlOpts(map?.expr_cond_field||'')}</select>
-              <select class="expr-cond-op inp" style="max-width:70px">${opOpts}</select>
-              <input type="text" class="expr-cond-val inp" style="max-width:70px" placeholder="250" value="${map?.expr_cond_val||''}">
-            </div>
-            <div class="expr-builder">
-              <span class="text-xs text-slate-500">entonces</span>
-              <input type="text" class="expr-then inp" style="max-width:100px" placeholder="texto o CAMPO" value="${map?.expr_then||''}">
-              <span class="text-xs text-slate-500">sino</span>
-              <input type="text" class="expr-else inp" style="max-width:100px" placeholder="texto o CAMPO" value="${map?.expr_else||''}">
-            </div>
-            <p class="text-xs text-slate-600 mt-1">Valores literales con comillas: <span class="font-mono">"Grueso"</span>. Números sin comillas: <span class="font-mono">18</span>. Para usar el valor de otra columna escribe su nombre exacto: <span class="font-mono">NOMBRE_COLUMNA</span>.</p>
-            <span class="expr-adv-toggle" onclick="toggleExprAdvanced(this.closest('tr'))">Expresión avanzada ↗</span>
-          </div>
-          <div class="expr-builder-adv" style="display:none">
-            <textarea class="expr-adv-input inp font-mono text-xs" rows="2" placeholder="ESPESOR >= 18 ? &quot;Grueso&quot; : DESCRIPCION" style="resize:vertical">${map?.expression||''}</textarea>
-            <div class="mt-1.5 space-y-1">
-              <p class="text-xs text-slate-500">Escribe cualquier expresión JavaScript. Todas las columnas del origen están disponibles como variables con su nombre exacto.</p>
-              <p class="text-xs text-slate-600">Operadores: <span class="font-mono">== != &gt;= &lt;= &gt; &lt; && || !</span> — Ternario: <span class="font-mono">condición ? valorSi : valorNo</span></p>
-              <p class="text-xs text-slate-600">Ejemplos:<br>
-                <span class="font-mono">ESPESOR >= 18 ? "Grueso" : "Fino"</span><br>
-                <span class="font-mono">ACTIVO == 1 ? true : false</span><br>
-                <span class="font-mono">PRECIO > 1000 ? PRECIO * 0.9 : PRECIO</span>
-              </p>
-              <p class="text-xs text-slate-600 mt-1">Variables disponibles: <span class="font-mono text-slate-400">${sqlFields.map(f=>f.name).join(', ') || '(cargá la tabla en Paso 1 primero)'}</span></p>
-            </div>
-            <span class="expr-adv-toggle mt-2 inline-block" onclick="toggleExprAdvanced(this.closest('tr'))">Builder visual ↙</span>
-          </div>
-        </td>
-        <td class="py-2 px-2 cell-transform" style="min-width:100px">
-          <select class="inp map-transform">${tOpts}</select>
-        </td>
-        <td class="py-2 px-2"><button type="button" onclick="this.closest('tr').remove();updateJsonPreview();renderSchemaPanel()" class="text-red-400 hover:text-red-300 px-2 mt-1">✕</button></td>
-      `;
-
-      // Restaurar modo expression avanzado si corresponde
-      if (mode === 'expression' && map?.expression && !map?.expr_cond_field) {
-        // Tenía expresión libre guardada — mostrar modo avanzado
-        const adv     = row.querySelector('.expr-builder-adv');
-        const simple  = row.querySelector('.expr-builder-simple');
-        const link    = row.querySelector('.expr-adv-toggle');
-        adv.style.display    = '';
-        simple.style.display = 'none';
-        if (link) link.textContent = 'Builder visual ↙';
-        row.querySelector('.expr-adv-input').value = map.expression;
-      }
-
-      // Restaurar op del builder simple
-      if (map?.expr_cond_op) {
-        const opSel = row.querySelector('.expr-cond-op');
-        if (opSel) opSel.value = map.expr_cond_op;
-      }
-
-      // Aplicar modo visual
-      setMapRowMode(row, mode);
-
-      row.querySelectorAll('select,input,textarea').forEach(el => el.addEventListener('input', updateJsonPreview));
-      row.querySelector('.map-api').addEventListener('input', () => { renderSchemaPanel(); refreshStdMappingHints(); });
-      document.getElementById('map-rows').appendChild(row);
-      updateJsonPreview();
-      row.querySelector('.map-api').focus();
-    }
-
-    function renderMapRows() {
-      document.getElementById('map-rows').innerHTML = '';
-      if (fieldMaps.length > 0) fieldMaps.forEach(m => addMapRow(m));
-    }
-
-    function getMapRows() {
-      const rows = document.querySelectorAll('#map-rows tr');
-      return Array.from(rows).map((r, i) => {
-        const mode     = r.dataset.mode || 'field';
-        const apiField = r.querySelector('.map-api').value.trim();
-        if (!apiField) return null;
-
-        const base = {
-          api_field:     apiField,
-          transform:     r.querySelector('.map-transform')?.value || 'none',
-          sort_order:    i,
-          source_type:   mode,
-        };
-
-        if (mode === 'static') {
-          return { ...base, sql_field: '__static__', default_value: r.querySelector('.map-static-val').value, expression: null };
-        }
-
-        if (mode === 'expression') {
-          const isAdv = r.querySelector('.expr-builder-adv').style.display !== 'none';
-          let expression, expr_cond_field, expr_cond_op, expr_cond_val, expr_then, expr_else;
-          if (isAdv) {
-            expression = r.querySelector('.expr-adv-input').value.trim();
-          } else {
-            expr_cond_field = r.querySelector('.expr-cond-field').value;
-            expr_cond_op    = r.querySelector('.expr-cond-op').value;
-            expr_cond_val   = r.querySelector('.expr-cond-val').value;
-            expr_then       = r.querySelector('.expr-then').value;
-            expr_else       = r.querySelector('.expr-else').value;
-            expression      = buildSimpleExpression(r);
-          }
-          return {
-            ...base,
-            sql_field: expr_cond_field || '__expr__',
-            default_value: null,
-            expression,
-            expr_cond_field: expr_cond_field || null,
-            expr_cond_op:    expr_cond_op    || null,
-            expr_cond_val:   expr_cond_val   || null,
-            expr_then:       expr_then       || null,
-            expr_else:       expr_else       || null,
-          };
-        }
-
-        // field
-        const sqlField = r.querySelector('.map-sql').value;
-        if (!sqlField) return null;
-        return { ...base, sql_field: sqlField, default_value: r.querySelector('.map-default')?.value || null, expression: null };
-      }).filter(Boolean);
-    }
+    function addMapRow(map = null, prefilledApiField = null) { mapEditor.addRow(map, prefilledApiField); }
+    function renderMapRows() { mapEditor.setRows(fieldMaps); }
+    function getMapRows() { return mapEditor.getRows(); }
 
     function updateJsonPreview() {
       const maps = getMapRows();
@@ -1964,6 +1750,134 @@
         alert('Error: '+err.message);
         btn.disabled=false; btn.textContent='Guardar job';
       }
+    }
+
+    // ── Plantillas de mapeo: guardar, aplicar, importar y exportar ──────
+    function currentTargetKind() { return isStdSelected() ? 'ardis_std' : 'api'; }
+
+    function showMappingOrigin(origin) {
+      const note = document.getElementById('mapping-origin-note');
+      let o = origin;
+      if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { o = null; } }
+      if (!o || !o.templateName) { note.classList.add('hidden'); return; }
+      const when = o.at ? ` el ${new Date(o.at).toLocaleString('es-ES')}` : '';
+      note.textContent = `Mapeo copiado de la plantilla «${o.templateName}»${when}.`;
+      note.classList.remove('hidden');
+    }
+
+    async function saveMappingAsTemplate() {
+      const rows = getMapRows();
+      if (rows.length === 0) { UI.toast('Añade al menos un mapeo de campo antes de guardarlo como plantilla', 'error'); return; }
+      const jobName = document.getElementById('j-name').value.trim();
+      MappingTools.modal({
+        title: 'Guardar mapeo como plantilla',
+        body: `
+          <label class="block text-xs font-medium text-slate-400 mb-1">Nombre de la plantilla</label>
+          <input data-name type="text" class="inp mb-3" value="${UI.escapeHtml(jobName ? 'Mapeo de ' + jobName : '')}">
+          <label class="block text-xs font-medium text-slate-400 mb-1">Descripción (opcional)</label>
+          <textarea data-desc rows="2" class="inp"></textarea>
+          <p class="text-xs text-slate-500 mt-3">Destino: <span class="font-mono">${currentTargetKind()}</span>. Se guardan los campos del mapeo y el filtro de filas actuales.</p>`,
+        actions: [
+          { label: 'Cancelar', cls: MappingTools.BTN_GHOST, title: 'Cerrar sin guardar la plantilla', onClick: () => true },
+          {
+            label: 'Guardar plantilla', title: 'Crear la plantilla con el mapeo actual',
+            onClick: async (ctx) => {
+              const name = ctx.root.querySelector('[data-name]').value.trim();
+              if (!name) { UI.toast('El nombre de la plantilla es obligatorio', 'error'); return false; }
+              try {
+                await API.post('/mapping-templates', {
+                  name,
+                  description: ctx.root.querySelector('[data-desc]').value.trim() || null,
+                  target_kind: currentTargetKind(),
+                  filter_expression: getFilterData().row_filter_expression,
+                  fields: MappingEditor.toTemplateFields(rows),
+                  origin: { type: 'job', id: editingId, name: jobName || null },
+                });
+                UI.toast(`Plantilla «${name}» guardada`, 'success');
+                return true;
+              } catch (err) {
+                if (err.details && err.details.issues) { MappingTools.showIssues('No se puede guardar la plantilla', err); return false; }
+                UI.toast(err.message, 'error');
+                return false;
+              }
+            },
+          },
+        ],
+      });
+    }
+
+    // Sustituye el mapeo del editor por las filas de una plantilla (forma interna); el filtro solo se toca si la plantilla lo trae
+    function loadTemplateIntoEditor(template) {
+      fieldMaps = (template.fields || []).map(MappingEditor.fromBackend);
+      renderMapRows();
+      if (template.filter_expression) setFilterData(true, template.filter_expression, null);
+      if (isStdSelected()) loadStdKeys();
+    }
+
+    async function openApplyTemplate() {
+      let list;
+      try {
+        list = (await API.get('/mapping-templates')).data || [];
+      } catch (err) { UI.toast(err.message, 'error'); return; }
+      if (list.length === 0) { UI.toast('Todavía no hay plantillas de mapeo guardadas', 'error'); return; }
+      const kind = currentTargetKind();
+      const options = list.map((t) => `<option value="${UI.escapeHtml(t.id)}"${t.target_kind === kind ? '' : ' disabled'}>${UI.escapeHtml(t.name)} (${UI.escapeHtml(t.target_kind)}, ${t.fieldCount} campos)${t.target_kind === kind ? '' : ' — destino distinto'}</option>`).join('');
+      MappingTools.modal({
+        title: 'Aplicar plantilla de mapeo',
+        body: `
+          <label class="block text-xs font-medium text-slate-400 mb-1">Plantilla</label>
+          <select data-template class="inp"><option value="">— Selecciona —</option>${options}</select>
+          <p class="text-xs text-amber-300 mt-3">Esto sustituye el mapeo actual por una copia de la plantilla. Los cambios posteriores de la plantilla no afectan a este job. ${editingId ? 'En un job ya creado, el nuevo mapeo se guarda al momento (el resto de cambios sin guardar del formulario no se guardan).' : 'El mapeo se guardará con el job.'}</p>`,
+        actions: [
+          { label: 'Cancelar', cls: MappingTools.BTN_GHOST, title: 'Cerrar sin cambiar el mapeo', onClick: () => true },
+          {
+            label: 'Aplicar y sustituir el mapeo', title: 'Reemplazar el mapeo del editor por el de la plantilla elegida (sin guardar el job todavía)',
+            onClick: async (ctx) => {
+              const id = ctx.root.querySelector('[data-template]').value;
+              if (!id) { UI.toast('Elige una plantilla', 'error'); return false; }
+              try {
+                if (editingId) {
+                  // Job existente: el servidor sustituye solo el mapeo (no el filtro) y anota el origen
+                  const res = (await API.post(`/jobs/${encodeURIComponent(editingId)}/apply-template`, { templateId: id })).data;
+                  fieldMaps = (res.fieldMaps || []).map(MappingEditor.fromBackend);
+                  renderMapRows();
+                  showMappingOrigin(res.job && res.job.mapping_origin);
+                  UI.toast('Plantilla aplicada y mapeo guardado en el job', 'success');
+                  return true;
+                }
+                const template = (await API.get(`/mapping-templates/${encodeURIComponent(id)}`)).data;
+                loadTemplateIntoEditor(template);
+                showMappingOrigin({ templateName: template.name, at: new Date().toISOString() });
+                UI.toast(`Plantilla «${template.name}» cargada; guarda el job para conservarla`, 'success');
+                return true;
+              } catch (err) { UI.toast(err.message, 'error'); return false; }
+            },
+          },
+        ],
+      });
+    }
+
+    function openImportMappingJson() {
+      MappingTools.importJsonDialog({
+        onLoad: (template) => {
+          if (template.target_kind !== currentTargetKind()) {
+            UI.toast(`Aviso: el JSON es para destino «${template.target_kind}» y este job usa «${currentTargetKind()}»`, 'error');
+          }
+          loadTemplateIntoEditor(template);
+          showMappingOrigin(null);
+          UI.toast('JSON cargado en el editor (sin guardar). Revísalo y guarda el job.', 'success');
+        },
+      });
+    }
+
+    function exportMappingJson() {
+      const rows = getMapRows();
+      if (rows.length === 0) { UI.toast('No hay mapeo que exportar', 'error'); return; }
+      const name = document.getElementById('j-name').value.trim() || 'Mapeo del job';
+      const doc = MappingTools.buildDoc({
+        name, targetKind: currentTargetKind(), filterExpression: getFilterData().row_filter_expression, rows,
+      });
+      MappingTools.downloadJson(`mapeo-${MappingTools.safeFileName(name)}.json`, doc);
     }
 
     init();
