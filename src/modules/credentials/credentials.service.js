@@ -5,6 +5,7 @@ const { getDb } = require('../../config/database');
 const { encrypt, decrypt } = require('../../services/encryption.service');
 const { AppError, NotFoundError, ConflictError, ValidationError } = require('../../utils/errors');
 const { isUncPath } = require('../../core/files/paths');
+const { writeAudit, purgeAuditEvents } = require('../../services/audit.service');
 
 const RESOURCE_TYPE = 'network_credential';
 const UNC_ONLY_MESSAGE = 'las credenciales de red solo aplican a rutas \\\\servidor\\recurso';
@@ -19,24 +20,6 @@ function now() { return new Date().toISOString(); }
 function serialize(row) {
   if (!row) return null;
   return { ...row, last_test_ok: row.last_test_ok === null || row.last_test_ok === undefined ? null : Boolean(row.last_test_ok) };
-}
-
-/**
- * Registra un evento de auditoría. El `summary` no debe contener secretos.
- * @param {{ actor?: { id?: string, username?: string }, action: string, resourceType: string, resourceId?: string, summary?: string }} event
- */
-function writeAudit({ actor, action, resourceType, resourceId = null, summary = null }) {
-  getDb().prepare(`
-    INSERT INTO audit_events (id, at, user_id, username, action, resource_type, resource_id, summary)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(crypto.randomUUID(), now(), (actor && actor.id) || null, (actor && actor.username) || null,
-    action, resourceType, resourceId, summary);
-}
-
-/** Borra los eventos de auditoría más antiguos que `days` días. Devuelve cuántos borró. */
-function purgeAuditEvents(days = 365) {
-  const limit = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  return getDb().prepare('DELETE FROM audit_events WHERE at < ?').run(limit).changes;
 }
 
 function listCredentials() {
