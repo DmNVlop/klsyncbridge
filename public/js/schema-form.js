@@ -1,7 +1,7 @@
 'use strict';
 
 // Genera un formulario a partir de un JSON Schema plano (propiedades de primer nivel).
-// Tipos soportados: string, integer, number. Un campo con `resource: 'api_config'`
+// Tipos soportados: string, integer, number, boolean (casilla) y enum (desplegable). Un campo con `resource: 'api_config'`
 // se pinta como <select> con los recursos recibidos en options.resources (api_config, network_credential…).
 // Si el campo con `resource` es opcional (no está en `required`), el selector ofrece primero
 // «Cuenta del servicio» con valor vacío (= sin recurso asignado); si es obligatorio, «— Selecciona —».
@@ -38,6 +38,19 @@
         options += `<option value="${esc(value)}" selected>(configuración no encontrada)</option>`;
       }
       return `<select ${common} data-kind="resource">${options}</select>`;
+    }
+
+    if (def.type === 'boolean') {
+      const checked = (isSet(value) ? value === true || value === 'true' : false) ? ' checked' : '';
+      return `<input type="checkbox" id="${controlId}" data-field="${esc(name)}" data-kind="boolean" class="h-4 w-4 rounded border-white/20 bg-base accent-blue-500"${checked}>`;
+    }
+
+    if (Array.isArray(def.enum)) {
+      // Opcional: opción vacía (el valor por defecto lo aplica el servidor); obligatorio: sin opción vacía salvo que no haya valor
+      const options = (isRequired && isSet(value) ? [] : ['']).concat(def.enum)
+        .map((option) => `<option value="${esc(option)}"${String(option) === String(isSet(value) ? value : '') ? ' selected' : ''}>${option === '' ? '— Por defecto —' : esc(option)}</option>`)
+        .join('');
+      return `<select ${common} data-kind="enum">${options}</select>`;
     }
 
     if (def.type === 'integer' || def.type === 'number') {
@@ -82,6 +95,10 @@
       const result = {};
       container.querySelectorAll('[data-field]').forEach((el) => {
         const name = el.dataset.field;
+        if (el.dataset.kind === 'boolean') {
+          result[name] = el.checked;
+          return;
+        }
         const raw = el.value.trim();
         if (raw === '') return;
         if (el.dataset.kind === 'integer' || el.dataset.kind === 'number') {

@@ -150,6 +150,7 @@
     let types = { triggers: [], steps: [] };
     let apiConfigs = [];
     let networkCredentials = [];
+    let mappingTemplates = [];
     let automation = null;
     let triggerForm = null;
     let stepEntries = []; // [{ type, values, form, card }]
@@ -180,7 +181,7 @@
         container.innerHTML = '<p class="text-sm text-red-400">Este tipo no está disponible en esta versión. Se conservará su configuración tal cual.</p>';
         return { getValues: () => values || {}, showErrors: () => [] };
       }
-      return window.SchemaForm.render(container, typeDef.configSchema, values, { resources: { api_config: apiConfigs, network_credential: networkCredentials } });
+      return window.SchemaForm.render(container, typeDef.configSchema, values, { resources: { api_config: apiConfigs, network_credential: networkCredentials, mapping_template: mappingTemplates } });
     }
 
     function fillTypeSelect(select, list, selectedType) {
@@ -600,9 +601,10 @@
 
     async function init() {
       try {
-        const [typesRes, configsRes, credentialsRes] = await Promise.all([API.get('/automation-types'), API.get('/api-configs'), API.get('/network-credentials')]);
+        const [typesRes, configsRes, credentialsRes, templatesRes] = await Promise.all([API.get('/automation-types'), API.get('/api-configs'), API.get('/network-credentials'), API.get('/mapping-templates')]);
         types = { triggers: typesRes.data.triggers || [], steps: typesRes.data.steps || [] };
         apiConfigs = (configsRes.data || []).map((c) => ({ id: c.id, name: c.name }));
+        mappingTemplates = (templatesRes.data || []).map((t) => ({ id: t.id, name: t.name }));
         networkCredentials = (credentialsRes.data || []).map((c) => ({ id: c.id, name: `${c.name} (${c.domain ? c.domain + '\\' : ''}${c.username})` }));
         if (automationId) {
           const res = await API.get(`/automations/${encodeURIComponent(automationId)}`);
