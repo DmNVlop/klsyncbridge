@@ -11,7 +11,9 @@ const {
 const { getSourceService } = require('../../services/sources/index');
 const { buildRequestAuth } = require('../../core/resources/api-config-resolver');
 const { requestWithRetry } = require('../../services/http.service');
-const fileOutput = require('../../core/outputs/file.output');
+const outputs = require('../../core/outputs');
+const { runPipeline } = require('../../core/data-pipeline');
+const { buildFileOutputConfig, combineOutcome } = require('./jobs.outputs');
 const { SYNC_MODES, OP_MODES, BATCH_DEFAULTS, DESTINATION_MODES } = require('../../config/constants');
 const { credentialAccess } = require('../credentials/credential-access.service');
 const logger = require('../../services/logger.service');
@@ -89,11 +91,15 @@ async function executeJob(jobId) {
   let detailsJson = null;
   let fileExportStatus = null;
   let fileExportPaths = null;
+  let httpOutcome = 'skipped';
 
   const wantsEndpoint = job.destination_mode !== DESTINATION_MODES.FILE;
   const wantsFile = job.destination_mode === DESTINATION_MODES.FILE || job.destination_mode === DESTINATION_MODES.BOTH;
 
   try {
+    // Salida a fichero por formato (registro de core/outputs: sin if por tipo)
+    const fileOutput = wantsFile ? outputs.findByFormats(job.file_formats) : null;
+
     const conn = getConnectionWithPassword(job.connection_id);
 
     if (conn.source_type === 'sqlserver' && conn.config && Object.keys(conn.config).length === 0) {
@@ -115,7 +121,27 @@ async function executeJob(jobId) {
       throw new Error('La tarea no tiene mapeos de campos configurados');
     }
 
-    if (!job.item_type) {
+    // Escribe la salida a fichero; nunca aborta el job (el endpoint sigue). Con credencial de red conecta antes.
+    const runFileOutput = async (items) => {
+      try {
+        const result = await credentialAccess.withFolderAccess(
+          { path: job.output_dir, credentialId: job.output_credential_id },
+          () => fileOutput.write({ items, config: buildFileOutputConfig(job, fieldMaps) }),
+        );
+        fileExportStatus = result.status;
+        fileExportPaths = JSON.stringify(result.filePaths || []);
+        recordsFailed += result.discardedCount || 0;
+        if (result.status === 'warning' && result.message) errorMessage = result.message;
+      } catch (fileErr) {
+        fileExportStatus = 'error';
+        fileExportPaths = JSON.stringify([]);
+        // El mensaje (ya clasificado si es de red) llega al registro de ejecución; si luego falla el endpoint, prevalece el suyo
+        errorMessage = fileErr.message;
+        logger.error(`Job "${job.name}" - falló exportación a archivo`, { job_id: jobId, error: fileErr.message });
+      }
+    };
+
+    if (wantsEndpoint && !job.item_type) {
       throw new Error('La tarea no tiene tipo de item configurado (item_type)');
     }
 
@@ -155,44 +181,26 @@ async function executeJob(jobId) {
       recordsSkipped = recordsRead - (recordsCreated + recordsUpdated);
     }
 
+    // Salidas de conjunto completo (p. ej. almacén .STD): todos los registros mapeados, en cada ejecución;
+    // la propia salida decide si reescribe (hash). No dependen del diff ni de send_empty_sync.
+    if (fileOutput && fileOutput.fullSet) {
+      const { items } = runPipeline({
+        records,
+        filterExpression: job.row_filter_enabled ? job.row_filter_expression : null,
+        fields: fieldMaps,
+        logMeta: { job_id: jobId },
+      });
+      await runFileOutput(items);
+    }
+
     const hasChanges = itemsToProcess.length > 0;
 
     if (!hasChanges && !job.send_empty_sync) {
       finalStatus = 'success';
       logger.info(`Job "${job.name}" sin cambios — no se envía request`, { job_id: jobId });
     } else {
-      // Exportación a archivo — independiente del endpoint, nunca aborta el job
-      if (wantsFile) {
-        try {
-          // Con credencial de red, conecta antes de escribir y reconecta una vez si la sesión cayó; sin ella, cuenta del servicio
-          const fileResult = await credentialAccess.withFolderAccess(
-            { path: job.output_dir, credentialId: job.output_credential_id },
-            () => fileOutput.write({
-              items: itemsToProcess,
-              config: {
-                outputDir: job.output_dir,
-                baseName: job.table_or_view,
-                formats: String(job.file_formats || 'csv').split(',').map(f => f.trim().toLowerCase()).filter(f => f === 'csv' || f === 'json'),
-                delimiter: job.csv_delimiter || ';',
-                retention: job.file_retention,
-                headers: fieldMaps.map(f => f.api_field),
-                jobName: job.name,
-                jobId: job.id,
-              },
-            }),
-          );
-          fileExportStatus = fileResult.status;
-          fileExportPaths = JSON.stringify(fileResult.filePaths || []);
-        } catch (fileErr) {
-          fileExportStatus = 'error';
-          fileExportPaths = JSON.stringify([]);
-          // El mensaje (ya clasificado si es de red) llega al registro de ejecución; si luego falla el endpoint, prevalece el suyo
-          errorMessage = fileErr.message;
-          logger.error(`Job "${job.name}" - falló exportación a archivo`, { job_id: jobId, error: fileErr.message });
-        }
-      }
-
-      let httpOutcome = 'skipped';
+      // Exportación a archivo por cambios — independiente del endpoint, nunca aborta el job
+      if (fileOutput && !fileOutput.fullSet) await runFileOutput(itemsToProcess);
 
       if (wantsEndpoint) {
       try {
@@ -378,7 +386,7 @@ async function executeJob(jobId) {
 
       // Checkpoint (snapshot + sync_state) cuando el destino es SOLO archivo —
       // depende del resultado de la exportación, ya que no hay bloque HTTP que lo actualice
-      if (!wantsEndpoint && wantsFile && fileExportStatus === 'success') {
+      if (!wantsEndpoint && wantsFile && (fileExportStatus === 'success' || fileExportStatus === 'warning')) {
         if (job.op_mode === OP_MODES.SNAPSHOT && hasChanges) {
           updateSnapshotInDb(db, jobId, itemsToProcess);
         }
@@ -396,19 +404,9 @@ async function executeJob(jobId) {
             updated_at = excluded.updated_at
         `).run(jobId, syncAt, lastKeyValue, syncAt);
       }
-
-      // Combinar resultado final según destinos activos
-      if (wantsEndpoint && wantsFile) {
-        if (httpOutcome === 'success' && fileExportStatus === 'success') finalStatus = 'success';
-        else if (httpOutcome === 'error' && fileExportStatus === 'error') finalStatus = 'error';
-        else finalStatus = 'partial';
-      } else if (wantsEndpoint) {
-        finalStatus = httpOutcome;
-      } else if (wantsFile) {
-        finalStatus = fileExportStatus === 'success' ? 'success' : 'error';
-      }
-
     }
+
+    finalStatus = combineOutcome({ wantsEndpoint, wantsFile, httpOutcome, fileStatus: fileExportStatus });
 
   } catch (err) {
     finalStatus = 'error';
