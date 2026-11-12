@@ -136,8 +136,12 @@ function findAutomationIdsByApiConfig(apiConfigId) {
 
 /** Automatizaciones cuyo disparador usa una credencial de red (vive en `trigger_config`, no en los pasos; ids uuid, sin comodines). */
 function findAutomationIdsByCredential(credentialId) {
-  return getDb().prepare('SELECT id FROM automations WHERE trigger_config LIKE ?')
-    .all(`%"${credentialId}"%`)
+  // Disparador o cualquier paso que use la credencial
+  return getDb().prepare(`
+    SELECT a.id FROM automations a
+    WHERE a.trigger_config LIKE @pattern
+       OR EXISTS (SELECT 1 FROM automation_steps s WHERE s.automation_id = a.id AND s.config LIKE @pattern)
+  `).all({ pattern: `%"${credentialId}"%` })
     .map((row) => row.id);
 }
 

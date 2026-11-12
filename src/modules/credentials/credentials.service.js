@@ -109,7 +109,12 @@ function findUsages(id) {
   return {
     jobs: db.prepare('SELECT id, name FROM jobs WHERE output_credential_id = ?').all(id),
     connections: db.prepare('SELECT id, name FROM connections WHERE network_credential_id = ?').all(id),
-    automations: db.prepare('SELECT id, name FROM automations WHERE trigger_config LIKE ?').all(`%"${id}"%`),
+    // Disparador (carpeta vigilada) o cualquier paso (p. ej. salida de map_export)
+    automations: db.prepare(`
+      SELECT a.id, a.name FROM automations a
+      WHERE a.trigger_config LIKE @pattern
+         OR EXISTS (SELECT 1 FROM automation_steps s WHERE s.automation_id = a.id AND s.config LIKE @pattern)
+    `).all({ pattern: `%"${id}"%` }),
   };
 }
 
