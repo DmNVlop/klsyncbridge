@@ -12,7 +12,8 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 60000;
 const DEFAULT_ENDPOINT_PATH = '/orders-v2/external/ardis-xml-imports';
 
-const DONE_STATUSES = new Set(['CREATED', 'UPDATED', 'UNCHANGED']);
+// ON_HOLD: presupuesto recibido y retenido en la plataforma. El archivo se entregó bien: no se reintenta.
+const DONE_STATUSES = new Set(['CREATED', 'UPDATED', 'UNCHANGED', 'ON_HOLD']);
 const REJECTED_STATUSES = new Set(['REJECTED_STARTED', 'REJECTED_CLOSED']);
 const HALT_MESSAGES = {
   400: 'La plataforma rechazó la petición (400): revisa la configuración del paso',

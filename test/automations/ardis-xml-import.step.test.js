@@ -41,6 +41,7 @@ const CASES = [
   { status: 201, json: { status: 'CREATED', orderNumber: 'ARD-1', version: 1, sentToProduction: true, message: 'Creado' }, outcome: 'done' },
   { status: 200, json: { status: 'UPDATED', orderNumber: 'ARD-1', version: 2 }, outcome: 'done' },
   { status: 200, json: { status: 'UNCHANGED', orderNumber: 'ARD-1', version: 1 }, outcome: 'done' },
+  { status: 200, json: { status: 'ON_HOLD', orderNumber: 'ARD-1', version: 1, sentToProduction: false }, outcome: 'done' },
   { status: 409, json: { status: 'REJECTED_STARTED', message: 'La OF ya empezó' }, outcome: 'rejected' },
   { status: 409, json: { status: 'REJECTED_CLOSED' }, outcome: 'rejected' },
   { status: 422, json: { status: 'INVALID_XML', message: 'No es Ardis' }, outcome: 'invalid' },
