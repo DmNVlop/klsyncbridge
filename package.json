@@ -1,6 +1,6 @@
 {
   "name": "klsyncbridge",
-  "version": "2.4.2",
+  "version": "2.4.3",
   "description": "KLSyncBridge - Servicio de integración de datos SQL Server → API",
   "main": "src/app.js",
   "scripts": {

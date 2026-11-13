@@ -1,5 +1,5 @@
 {
-  "version": "2.4.2",
-  "release_date": "2026-11-12",
-  "changelog": "- Actualización: se ve cada fase (descargar con porcentaje, detener el servicio, instalar y arrancar) con lo que tarda, y al terminar un resumen con el tiempo total (visible a partir de la próxima actualización)\n- Sistema: los privilegios muestran la cuenta real del servicio («cuenta del sistema (SYSTEM)») en vez de la cuenta del equipo"
+  "version": "2.4.3",
+  "release_date": "2026-11-13",
+  "changelog": "- «La plataforma puede responder ON_HOLD (presupuesto retenido): se trata como entregado y no se reintenta»."
 }
